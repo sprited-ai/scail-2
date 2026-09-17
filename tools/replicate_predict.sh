@@ -3,7 +3,13 @@
 # Usage: tools/replicate_predict.sh IMAGE VIDEO OUT.mp4 '{"preset":"fast","num_frames":81,...}'
 # Reads REPLICATE_API_TOKEN from the environment or ../sprute/.env.
 set -euo pipefail
-: "${REPLICATE_API_TOKEN:=$(grep -E '^REPLICATE_API_TOKEN=' "$(dirname "$0")/../../sprute/.env" | sed -e 's/^[^=]*=//' -e 's/["'"'"']//g')}"
+# token: env var, else ./.env in the repo root, else ../sprute/.env
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+for f in "$ROOT/.env" "$ROOT/../sprute/.env"; do
+  [ -n "${REPLICATE_API_TOKEN:-}" ] && break
+  [ -f "$f" ] && REPLICATE_API_TOKEN=$(grep -E '^REPLICATE_API_TOKEN=' "$f" | tail -1 | sed -e 's/^[^=]*=//' -e "s/[\"']//g")
+done
+export REPLICATE_API_TOKEN
 MODEL=${MODEL:-sprited/scail-2}
 IMAGE=$1; VIDEO=$2; OUT=$3; EXTRA=${4:-'{}'}
 AUTH="Authorization: Bearer $REPLICATE_API_TOKEN"

@@ -5,3 +5,4 @@ __pycache__/
 .cog/
 samples/out/
 tmp/
+.env
