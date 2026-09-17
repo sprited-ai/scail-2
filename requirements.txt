@@ -1,0 +1,39 @@
+# Mirrors the ComfyUI v0.33.1 environment SCAIL-2 was validated in (torch 2.11 / cu128).
+--extra-index-url https://download.pytorch.org/whl/cu128
+torch==2.11.0
+torchvision==0.26.0
+torchaudio==2.11.0
+torchsde
+numpy==2.5.0
+einops==0.8.2
+transformers==5.9.0
+tokenizers
+sentencepiece
+safetensors==0.7.0
+aiohttp>=3.11.8
+yarl>=1.18.0
+pyyaml
+Pillow==12.2.0
+scipy==1.17.1
+tqdm
+psutil
+alembic
+SQLAlchemy>=2.0.0
+filelock
+av==18.0.0
+comfy-kitchen==0.2.31
+comfy-aimdo==0.4.13
+requests
+simpleeval>=1.0.0
+blake3
+kornia==0.8.2
+spandrel
+pydantic~=2.0
+pydantic-settings~=2.0
+comfyui-frontend-package==1.48.7
+comfyui-workflow-templates==0.11.41
+comfyui-embedded-docs==0.5.9
+# packaging extras
+timm==1.0.27
+huggingface_hub
+websocket-client

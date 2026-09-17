@@ -1,0 +1,680 @@
+{
+ "WanSCAILToVideo": {
+  "input": {
+   "required": {
+    "positive": [
+     "CONDITIONING",
+     {}
+    ],
+    "negative": [
+     "CONDITIONING",
+     {}
+    ],
+    "vae": [
+     "VAE",
+     {}
+    ],
+    "width": [
+     "INT",
+     {
+      "default": 512,
+      "min": 32,
+      "max": 16384,
+      "step": 32
+     }
+    ],
+    "height": [
+     "INT",
+     {
+      "default": 896,
+      "min": 32,
+      "max": 16384,
+      "step": 32
+     }
+    ],
+    "length": [
+     "INT",
+     {
+      "default": 81,
+      "min": 1,
+      "max": 16384,
+      "step": 4
+     }
+    ],
+    "batch_size": [
+     "INT",
+     {
+      "default": 1,
+      "min": 1,
+      "max": 4096
+     }
+    ],
+    "pose_strength": [
+     "FLOAT",
+     {
+      "tooltip": "Strength of the pose latent.",
+      "default": 1.0,
+      "min": 0.0,
+      "max": 10.0,
+      "step": 0.01
+     }
+    ],
+    "pose_start": [
+     "FLOAT",
+     {
+      "tooltip": "Start step of the pose conditioning.",
+      "default": 0.0,
+      "min": 0.0,
+      "max": 1.0,
+      "step": 0.01
+     }
+    ],
+    "pose_end": [
+     "FLOAT",
+     {
+      "tooltip": "End step of the pose conditioning.",
+      "default": 1.0,
+      "min": 0.0,
+      "max": 1.0,
+      "step": 0.01
+     }
+    ],
+    "video_frame_offset": [
+     "INT",
+     {
+      "tooltip": "Cumulative output frame this chunk begins at. Wire from the previous chunk's video_frame_offset output.",
+      "default": 0,
+      "min": 0,
+      "max": 16384,
+      "step": 1
+     }
+    ],
+    "previous_frame_count": [
+     "INT",
+     {
+      "tooltip": "Tail frames of previous_frames to anchor. SCAIL-2 trained at 5 (81-frame chunks, 76-frame step).",
+      "default": 5,
+      "min": 1,
+      "max": 16384,
+      "step": 4
+     }
+    ]
+   },
+   "optional": {
+    "pose_video": [
+     "IMAGE",
+     {
+      "tooltip": "Video used for pose conditioning. Will be downscaled to half the resolution of the main video."
+     }
+    ],
+    "pose_video_mask": [
+     "IMAGE",
+     {
+      "tooltip": "SCAIL-2 only. Colored per-identity SAM3 mask video at the same resolution as pose_video."
+     }
+    ],
+    "replacement_mode": [
+     "BOOLEAN",
+     {
+      "tooltip": "SCAIL-2 only. False = Animation Mode (pose_video_mask should have black background). True = Replacement Mode (pose_video_mask should have white background).",
+      "default": false
+     }
+    ],
+    "reference_image": [
+     "IMAGE",
+     {
+      "tooltip": "Reference image. The first image is the primary reference (composite all identities onto it). SCAIL-2: extra batch images are used as additional views (back view, close-up, occluded background), each needing a matching reference_image_mask in that identity's color."
+     }
+    ],
+    "reference_image_mask": [
+     "IMAGE",
+     {
+      "tooltip": "SCAIL-2 only. Colored reference mask, batch matching reference_image (first = primary reference mask, rest = identity masks for the additional reference_image)."
+     }
+    ],
+    "clip_vision_output": [
+     "CLIP_VISION_OUTPUT",
+     {
+      "tooltip": "CLIP vision features for conditioning. Model is trained with stretch resize to aspect ratio."
+     }
+    ],
+    "previous_frames": [
+     "IMAGE",
+     {
+      "tooltip": "SCAIL-2 only. Full decoded output of the previous chunk. Only the last previous_frame_count are used as the extension anchor."
+     }
+    ]
+   }
+  },
+  "output": [
+   "CONDITIONING",
+   "CONDITIONING",
+   "LATENT",
+   "INT"
+  ]
+ },
+ "LoadVideo": {
+  "input": {
+   "required": {
+    "file": [
+     "COMBO",
+     {
+      "multiselect": false,
+      "options": [
+       "2026-08-17-sword-art-online-alternative-gun-gale-on-\ubab8\ubc14\uafc8-\ucd1d\uc131-v2.mp4",
+       "2026-08-17-sword-art-online-alternative-gun-gale-on-\ubab8\ubc14\uafc8-\ucd1d\uc131.mp4",
+       "2026-08-17-the-disastrous-life-of-saiki-k-\ub2a5\ub825-\uc4f0\ub808\uae30.mp4",
+       "2026-08-17-the-disastrous-life-of-saiki-k-\uc2e0\ubc1c\uc758-\ubc18\ub780.mp4",
+       "2026-08-17-the-disastrous-life-of-saiki-k-\ud3c9\ubc94\uc99d\ubc1c.mp4",
+       "2026-08-17-\ub17c\uc18d-\uc774\uc0c1\ud55c-\uc77c.mp4",
+       "2026-08-18-flcl-\uba38\ub9ac-\uc2e0\ud638\ub3d9-v2.mp4",
+       "2026-08-18-flcl-\uba38\ub9ac-\uc2e0\ud638\ub3d9.mp4",
+       "AnimateDiff_00108.mp4",
+       "AnimateDiff_00260.webm",
+       "ComfyUI_00008_.mp4",
+       "ComfyUI_00189_.mp4",
+       "asset_MLEfUWi4AMYmiRNb4q26m1Jx.mp4",
+       "asset_fzWwxWginAxDYssGv3kXJkne.mp4",
+       "asset_vyhGMTSHCsYEsNBs97UxTbTk.mp4",
+       "being-57_run-to-greet_drive-mask.mp4",
+       "being-57_run-to-greet_drive.mp4",
+       "being-60_greet-to-run_drive-mask.mp4",
+       "being-60_greet-to-run_drive.mp4",
+       "being-60_greet-to-run_seed17_cross_drive-mask.mp4",
+       "being-60_greet-to-run_seed17_cross_drive.mp4",
+       "being-60_greet-to-run_seed17_same_drive-mask.mp4",
+       "being-60_greet-to-run_seed17_same_drive.mp4",
+       "being-61_greet-to-run_drive-mask.mp4",
+       "being-61_greet-to-run_drive.mp4",
+       "being-69_greet-to-run_drive-mask.mp4",
+       "being-69_greet-to-run_drive.mp4",
+       "birefnet_drive_640.mp4",
+       "chill.mp4",
+       "cross_endpoints4.mp4",
+       "dust-bunny-bouquet-s01.mp4",
+       "dust-bunny-bouquet-s02.mp4",
+       "dust-bunny-bouquet-s03.mp4",
+       "dust-bunny-bouquet-s04.mp4",
+       "dust-bunny-bouquet-s05.mp4",
+       "dust-bunny-bouquet-s06.mp4",
+       "ep-umbrella.mp4",
+       "ep1-v2.mp4",
+       "ep2-v2.mp4",
+       "ep4-v2.mp4",
+       "ep5-v2.mp4",
+       "ep6-v2.mp4",
+       "funny.mp4",
+       "machi-short.mp4",
+       "monet-angry-1.webm",
+       "monet-ep.mp4",
+       "res-416.mp4",
+       "same_endpoints4.mp4",
+       "scail2_bridge_cross_endpoints4.mp4",
+       "scail2_bridge_same_endpoints4.mp4",
+       "scail2_monet_e1_00001.mp4",
+       "scail2_monet_e1_up_00001.mp4",
+       "scail2_monet_e1b_quality_00001.mp4",
+       "scail2_monet_e2_human_q_00001.mp4",
+       "seedance-sample.mp4",
+       "shot_00010_.mp4",
+       "shot_00014_.mp4",
+       "shot_00015_.mp4",
+       "simkung.mp4",
+       "sprute-007-driver.mp4",
+       "sprute-007-north back-driver.mp4",
+       "sprute-436-male-driver.mp4",
+       "sprute-440-male-driver.mp4",
+       "sprute-442-driving-mask.mkv",
+       "sprute-grid8-walk-429.mp4",
+       "thriller-shinchan.mp4",
+       "thriller.mp4"
+      ],
+      "video_upload": true
+     }
+    ]
+   }
+  },
+  "output": [
+   "VIDEO"
+  ]
+ },
+ "GetVideoComponents": {
+  "input": {
+   "required": {
+    "video": [
+     "VIDEO",
+     {
+      "tooltip": "The video to extract components from."
+     }
+    ]
+   }
+  },
+  "output": [
+   "IMAGE",
+   "AUDIO",
+   "FLOAT",
+   "INT"
+  ]
+ },
+ "LoadImage": {
+  "input": {
+   "required": {
+    "image": [
+     [
+      "  .webp",
+      "01-template.png",
+      "03-one-a-day-2-standing.png",
+      "..."
+     ],
+     {
+      "image_upload": true
+     }
+    ]
+   }
+  },
+  "output": [
+   "IMAGE",
+   "MASK"
+  ]
+ },
+ "LoraLoaderModelOnly": {
+  "input": {
+   "required": {
+    "model": [
+     "MODEL"
+    ],
+    "lora_name": [
+     [
+      "3774_Shiiro_s_Styles__v1_0.safetensors",
+      "66b_Afunai_Flat_Color__v2_0_flat_color_only.safetensors",
+      "AnimaMythC0lorL1nes.safetensors",
+      "..."
+     ]
+    ],
+    "strength_model": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "min": -100.0,
+      "max": 100.0,
+      "step": 0.01
+     }
+    ]
+   }
+  },
+  "output": [
+   "MODEL"
+  ]
+ },
+ "KSampler": {
+  "input": {
+   "required": {
+    "model": [
+     "MODEL",
+     {
+      "tooltip": "The model used for denoising the input latent."
+     }
+    ],
+    "seed": [
+     "INT",
+     {
+      "default": 0,
+      "min": 0,
+      "max": 18446744073709551615,
+      "control_after_generate": true,
+      "tooltip": "The random seed used for creating the noise."
+     }
+    ],
+    "steps": [
+     "INT",
+     {
+      "default": 20,
+      "min": 1,
+      "max": 10000,
+      "tooltip": "The number of steps used in the denoising process."
+     }
+    ],
+    "cfg": [
+     "FLOAT",
+     {
+      "default": 8.0,
+      "min": 0.0,
+      "max": 100.0,
+      "step": 0.1,
+      "round": 0.01,
+      "tooltip": "The Classifier-Free Guidance scale balances creativity and adherence to the prompt. Higher values result in images more closely matching the prompt however too high values will negatively impact quality."
+     }
+    ],
+    "sampler_name": [
+     [
+      "euler",
+      "euler_cfg_pp",
+      "euler_ancestral",
+      "..."
+     ],
+     {
+      "tooltip": "The algorithm used when sampling, this can affect the quality, speed, and style of the generated output."
+     }
+    ],
+    "scheduler": [
+     [
+      "simple",
+      "sgm_uniform",
+      "karras",
+      "exponential",
+      "ddim_uniform",
+      "beta",
+      "normal",
+      "linear_quadratic",
+      "kl_optimal"
+     ],
+     {
+      "tooltip": "The scheduler controls how noise is gradually removed to form the image."
+     }
+    ],
+    "positive": [
+     "CONDITIONING",
+     {
+      "tooltip": "The conditioning describing the attributes you want to include in the image."
+     }
+    ],
+    "negative": [
+     "CONDITIONING",
+     {
+      "tooltip": "The conditioning describing the attributes you want to exclude from the image."
+     }
+    ],
+    "latent_image": [
+     "LATENT",
+     {
+      "tooltip": "The latent image to denoise."
+     }
+    ],
+    "denoise": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "min": 0.0,
+      "max": 1.0,
+      "step": 0.01,
+      "tooltip": "The amount of denoising applied, lower values will maintain the structure of the initial image allowing for image to image sampling."
+     }
+    ]
+   }
+  },
+  "output": [
+   "LATENT"
+  ]
+ },
+ "ModelSamplingSD3": {
+  "input": {
+   "required": {
+    "model": [
+     "MODEL"
+    ],
+    "shift": [
+     "FLOAT",
+     {
+      "default": 3.0,
+      "min": 0.0,
+      "max": 100.0,
+      "step": 0.01
+     }
+    ]
+   }
+  },
+  "output": [
+   "MODEL"
+  ]
+ },
+ "CLIPVisionEncode": {
+  "input": {
+   "required": {
+    "clip_vision": [
+     "CLIP_VISION"
+    ],
+    "image": [
+     "IMAGE"
+    ],
+    "crop": [
+     [
+      "center",
+      "none"
+     ]
+    ]
+   }
+  },
+  "output": [
+   "CLIP_VISION_OUTPUT"
+  ]
+ },
+ "UNETLoader": {
+  "input": {
+   "required": {
+    "unet_name": [
+     [
+      "DasiwaWAN22I2V14BLightspeed_snatchkissHighV11.safetensors",
+      "DasiwaWAN22I2V14BLightspeed_snatchkissLowV11.safetensors",
+      "NSFW/Wan2.2_Remix_NSFW_i2v_14b_high_lighting_v2.0.safetensors",
+      "..."
+     ]
+    ],
+    "weight_dtype": [
+     [
+      "default",
+      "fp8_e4m3fn",
+      "fp8_e4m3fn_fast",
+      "fp8_e5m2"
+     ],
+     {
+      "advanced": true
+     }
+    ]
+   }
+  },
+  "output": [
+   "MODEL"
+  ]
+ },
+ "CLIPLoader": {
+  "input": {
+   "required": {
+    "clip_name": [
+     [
+      "anima_baseV10_txt.safetensors",
+      "clip_l.safetensors",
+      "gemma_3_12B_it_fp8_scaled.safetensors",
+      "llava_llama3_fp8_scaled.safetensors",
+      "minimax_music3_text_encoder_pruned_bf16.safetensors",
+      "nsfw_wan_umt5-xxl_fp8_scaled.safetensors",
+      "qwen3vl_32b_minimax_h3_int8_convrot.safetensors",
+      "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+      "qwen3vl_4b_fp8_scaled.safetensors",
+      "qwen_2.5_vl_7b_fp8_scaled.safetensors",
+      "qwen_3_4b-bf16.safetensors",
+      "t5xxl_fp16.safetensors",
+      "t5xxl_fp8_e4m3fn_scaled.safetensors",
+      "text_encoders/qwen3vl_4b_fp8_scaled.safetensors",
+      "umt5.safetensors",
+      "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      "waiANIMA_v10Base10_txt.safetensors"
+     ]
+    ],
+    "type": [
+     [
+      "stable_diffusion",
+      "stable_cascade",
+      "sd3",
+      "..."
+     ]
+    ]
+   },
+   "optional": {
+    "device": [
+     [
+      "default",
+      "cpu"
+     ],
+     {
+      "advanced": true
+     }
+    ]
+   }
+  },
+  "output": [
+   "CLIP"
+  ]
+ },
+ "VAELoader": {
+  "input": {
+   "required": {
+    "vae_name": [
+     [
+      "ae.safetensors",
+      "hunyuan_video_vae_bf16.safetensors",
+      "minimax_h3_audio_vae_fp32.safetensors",
+      "minimax_h3_video_vae_fp16.safetensors",
+      "minimax_music3_dav.safetensors",
+      "qwen_image_layered_vae.safetensors",
+      "qwen_image_vae.safetensors",
+      "vae-ft-mse-840000-ema-pruned.safetensors",
+      "wan_2.1_vae.safetensors",
+      "z-anime_ae.safetensors",
+      "pixel_space"
+     ]
+    ]
+   }
+  },
+  "output": [
+   "VAE"
+  ]
+ },
+ "CLIPVisionLoader": {
+  "input": {
+   "required": {
+    "clip_name": [
+     [
+      "clip_vision_h.safetensors"
+     ]
+    ]
+   }
+  },
+  "output": [
+   "CLIP_VISION"
+  ]
+ },
+ "CLIPTextEncode": {
+  "input": {
+   "required": {
+    "text": [
+     "STRING",
+     {
+      "multiline": true,
+      "dynamicPrompts": true,
+      "tooltip": "The text to be encoded."
+     }
+    ],
+    "clip": [
+     "CLIP",
+     {
+      "tooltip": "The CLIP model used for encoding the text."
+     }
+    ]
+   }
+  },
+  "output": [
+   "CONDITIONING"
+  ]
+ },
+ "VAEDecode": {
+  "input": {
+   "required": {
+    "samples": [
+     "LATENT",
+     {
+      "tooltip": "The latent to be decoded."
+     }
+    ],
+    "vae": [
+     "VAE",
+     {
+      "tooltip": "The VAE model used for decoding the latent."
+     }
+    ]
+   }
+  },
+  "output": [
+   "IMAGE"
+  ]
+ },
+ "ImageBatch": {
+  "input": {
+   "required": {
+    "image1": [
+     "IMAGE"
+    ],
+    "image2": [
+     "IMAGE"
+    ]
+   }
+  },
+  "output": [
+   "IMAGE"
+  ]
+ },
+ "ImageFromBatch": {
+  "input": {
+   "required": {
+    "image": [
+     "IMAGE",
+     {}
+    ],
+    "batch_index": [
+     "INT",
+     {
+      "default": 0,
+      "min": -16384,
+      "max": 16384
+     }
+    ],
+    "length": [
+     "INT",
+     {
+      "default": 1,
+      "min": 1,
+      "max": 4096
+     }
+    ]
+   }
+  },
+  "output": [
+   "IMAGE"
+  ]
+ },
+ "SaveImage": {
+  "input": {
+   "required": {
+    "images": [
+     "IMAGE",
+     {
+      "tooltip": "The images to save."
+     }
+    ],
+    "filename_prefix": [
+     "STRING",
+     {
+      "default": "ComfyUI",
+      "tooltip": "The prefix for the file to save. This may include formatting information such as %date:yyyy-MM-dd% or %Empty Latent Image.width% to include values from nodes."
+     }
+    ]
+   },
+   "hidden": {
+    "prompt": "PROMPT",
+    "extra_pnginfo": "EXTRA_PNGINFO"
+   }
+  },
+  "output": [
+   "IMAGE"
+  ]
+ }
+}

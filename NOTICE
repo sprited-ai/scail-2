@@ -1,0 +1,33 @@
+This package serves third-party models and software:
+
+  SCAIL-2: Unifying Controlled Character Animation with End-to-end
+  In-Context Conditioning
+  Copyright (c) 2026 Zhipu AI (Wenhao Yan, Fengjia Guo, Zhuoyi Yang, Jie Tang)
+  Code: Apache License 2.0 — https://github.com/zai-org/SCAIL-2
+  Weights: MIT License — https://huggingface.co/zai-org/SCAIL-2
+  Paper: https://arxiv.org/abs/2606.10804
+  Served as the Comfy-Org repack (fp8 scaled diffusion model, DPO and
+  relighting LoRAs), MIT — https://huggingface.co/Comfy-Org/SCAIL-2
+
+  Wan 2.1 components bundled with SCAIL-2 (VAE, umT5-XXL text encoder)
+  Copyright (c) Alibaba Wan Team — Apache License 2.0
+  https://huggingface.co/Wan-AI/Wan2.1-T2V-14B
+  CLIP ViT-H/14 (xlm-roberta-large-vit-huge-14) image encoder — open_clip, MIT
+  Served as the Comfy-Org repack —
+  https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged
+
+  Wan2.1 I2V 14B 480p step/CFG distillation LoRA (lightx2v)
+  Apache License 2.0 — https://huggingface.co/lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v
+  Served as the rank-64 ComfyUI repack — https://huggingface.co/Kijai/WanVideo_comfy
+
+  BiRefNet (automatic masks)
+  Copyright (c) Peng Zheng et al. — MIT License
+  https://github.com/ZhengPeng7/BiRefNet — https://huggingface.co/ZhengPeng7/BiRefNet
+
+  ComfyUI (inference runtime, unmodified, v0.33.1 / commit 72865f4f)
+  Copyright (c) Comfy Org — GNU General Public License v3.0
+  https://github.com/comfyanonymous/ComfyUI
+  ComfyUI runs as a separate process inside the container and is driven over
+  its HTTP/websocket API; its complete source is at the URL above. The
+  packaging code in this repository (predict.py and friends) is separately
+  licensed under the MIT License (see LICENSE).
