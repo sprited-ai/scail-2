@@ -25,9 +25,10 @@ What this endpoint gives you:
   (grayscale mattes or SCAIL-2 palette colours), or let `auto_mask` derive them
   from the image's alpha channel or [BiRefNet](https://github.com/ZhengPeng7/BiRefNet).
   `return_masks` hands them back so you can iterate.
-- **Quality or fast** — the official sampling recipe (UniPC, 40 steps, CFG 5)
-  or the official ComfyUI recipe with the lightx2v step/CFG-distill LoRA
-  (6 steps, CFG 1), about 10x cheaper. Steps / CFG / shift are exposed.
+- **Fast or quality** — the default is the official ComfyUI recipe (lightx2v
+  step/CFG-distill LoRA + DPO LoRA, 6 steps, CFG 1: 81 frames at 512p in
+  about a minute); `quality` is the paper's sampler (UniPC, 40 steps, CFG 5),
+  about 12x slower. Steps / CFG / shift are exposed.
 - **Official LoRAs** — the Bias-Aware DPO LoRA and the relighting LoRA (for
   replacement mode) ship in the image, dialled in by strength.
 - **Your frame rate, held not interpolated** — resample the driving video to
@@ -53,9 +54,9 @@ What this endpoint gives you:
 | `width` / `height` | `0` | explicit size (multiples of 32) — centre-crops the driving video to that aspect |
 | `num_frames` | `0` | 0 = all driving frames (max 161); rounded to 4k+1 |
 | `fps` | `0` | resample the driving video to this rate first (nearest frame, no interpolation); 0 = source rate |
-| `preset` | `quality` | `quality` = UniPC 40 steps / CFG 5 / shift 3; `fast` = lightx2v LoRA 0.8, Euler 6 steps / CFG 1 / shift 5 |
+| `preset` | `fast` | `fast` = lightx2v LoRA 0.8, Euler 6 steps / CFG 1 / shift 5 (official ComfyUI recipe); `quality` = UniPC 40 steps / CFG 5 / shift 3 (paper) |
 | `steps`, `guidance_scale`, `shift` | `0` | override the preset (0 = preset default) |
-| `dpo_lora` | `0` | strength of the official Bias-Aware DPO LoRA (the ComfyUI template uses 1.0 with `fast`) |
+| `dpo_lora` | `1.0` | strength of the official Bias-Aware DPO LoRA (0 = off; the released base checkpoint is pre-DPO) |
 | `relight_lora` | `0` | strength of the official relighting LoRA (replacement mode) |
 | `pose_strength` | `1.0` | weight of the motion conditioning |
 | `seed` | random | |
@@ -82,6 +83,20 @@ which passes through untouched (multi-identity masks work this way). With
 everything else is matted with BiRefNet (single subject). Masks are optional:
 single-character animation works without them, they mostly help identity
 binding and multi-character scenes.
+
+### Runtime
+
+Replicate stops predictions at 30 minutes, so requests whose estimated sampling
+time exceeds ~26 minutes are refused up front with a suggestion (fewer frames,
+smaller resolution, or `fast`). Measured on an RTX PRO 6000 (H100 is expected to
+be similar or faster):
+
+| preset | frames × size | sampling |
+|---|---|---|
+| fast | 81 × 896x512 | 85 s |
+| fast | 161 × 512x512 (3 windows) | 69 s |
+| quality | 33 × 512x512 | 143 s |
+| quality | 81 × 896x512 | 1043 s |
 
 ### Long videos
 
