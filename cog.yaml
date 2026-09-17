@@ -33,4 +33,4 @@ build:
     - pget https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Lightx2v/lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors /ComfyUI/models/loras/lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors
     # BiRefNet (MIT) for automatic single-subject masks — 0.9 GB into the HF cache
     - python -c "from huggingface_hub import snapshot_download; snapshot_download('ZhengPeng7/BiRefNet')"
-predict: "predict.py:Predictor"
+run: "predict.py:Predictor"

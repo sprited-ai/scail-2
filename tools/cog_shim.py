@@ -4,8 +4,7 @@ import pathlib
 from pydantic import BaseModel  # noqa: F401  (re-exported)
 
 
-class Path(type(pathlib.Path())):
-    pass
+Path = pathlib.Path
 
 
 class BasePredictor:
