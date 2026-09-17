@@ -26,7 +26,11 @@ inp.update(json.loads(sys.argv[3]))
 print(json.dumps({"input": inp}))
 PY
 )
-PRED=$(curl -sS -X POST "$API/models/$MODEL/predictions" -H "$AUTH" -H "Content-Type: application/json" -d "$BODY")
+# private models can't use the models/…/predictions shortcut: run the latest version by id
+VERSION=${VERSION:-$(curl -sS "$API/models/$MODEL" -H "$AUTH" | python3 -c 'import sys,json; print(json.load(sys.stdin)["latest_version"]["id"])')}
+echo "version: $VERSION"
+BODY=$(echo "$BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); d['version']='$VERSION'; print(json.dumps(d))")
+PRED=$(curl -sS -X POST "$API/predictions" -H "$AUTH" -H "Content-Type: application/json" -d "$BODY")
 ID=$(echo "$PRED" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("id") or sys.exit("create failed: "+json.dumps(d)))')
 echo "prediction: https://replicate.com/p/$ID"
 

@@ -181,8 +181,8 @@ class Predictor(BasePredictor):
         negative_prompt: str = Input(default="", description="What to avoid, e.g. 'distorted limbs, camera movement, blurry'. Only matters with guidance_scale > 1 (the quality preset). Wan's stock Chinese negative prompt is deliberately not applied: its 'painting / artwork / style' terms push stylized characters toward a 3D-CG look."),
         mode: str = Input(default="animation", choices=["animation", "replacement"],
                           description="animation: the reference character (and its background) performs the driving motion. replacement: the character is placed into the driving video, keeping its background and lighting."),
-        image_mask: Path = Input(default=None, description="Optional mask for the reference: a grayscale/black-and-white matte (white = character) or a SCAIL-2 palette mask (blue = identity 0). If omitted and auto_mask is on, one is derived from the image's alpha channel or BiRefNet."),
-        video_mask: Path = Input(default=None, description="Optional per-frame mask video for the driving video, same conventions as image_mask (grayscale matte or SCAIL-2 colours). If omitted and auto_mask is on, BiRefNet masks every frame."),
+        image_mask: Optional[Path] = Input(default=None, description="Optional mask for the reference: a grayscale/black-and-white matte (white = character) or a SCAIL-2 palette mask (blue = identity 0). If omitted and auto_mask is on, one is derived from the image's alpha channel or BiRefNet."),
+        video_mask: Optional[Path] = Input(default=None, description="Optional per-frame mask video for the driving video, same conventions as image_mask (grayscale matte or SCAIL-2 colours). If omitted and auto_mask is on, BiRefNet masks every frame."),
         auto_mask: bool = Input(default=True, description="Derive missing masks automatically (alpha channel or BiRefNet single-subject matting). Off = run without masks."),
         resolution: str = Input(default="512p", choices=["512p", "704p"], description="Short side of the output; the driving video's aspect ratio is kept (e.g. 896x512 for 16:9, 512x512 for square). SCAIL-2 was trained at both."),
         width: int = Input(default=0, ge=0, le=1536, description="Explicit output width (multiple of 32). Set together with height to override resolution; the driving video is centre-cropped to this aspect."),
@@ -197,7 +197,7 @@ class Predictor(BasePredictor):
         dpo_lora: float = Input(default=1.0, ge=0, le=2, description="Strength of the official Bias-Aware DPO LoRA (0 = off). 1.0 is what the official ComfyUI template ships with; the released base checkpoint is pre-DPO."),
         relight_lora: float = Input(default=0, ge=0, le=2, description="Strength of the official relighting LoRA for replacement mode (0 = off). Improves lighting consistency with the driving scene."),
         pose_strength: float = Input(default=1.0, ge=0, le=2, description="Weight of the driving-motion conditioning."),
-        seed: int = Input(default=None, description="Random seed; leave empty for random."),
+        seed: Optional[int] = Input(default=None, description="Random seed; leave empty for random."),
         return_masks: bool = Input(default=False, description="Also return the reference/driving masks that were used (for debugging or re-use as image_mask / video_mask)."),
     ) -> Output:
         t0 = time.time()
