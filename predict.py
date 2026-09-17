@@ -60,6 +60,9 @@ DEFAULT_NEGATIVE = ("色调艳丽，过曝，静态，细节模糊不清，字�
                     "形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走")
 REQUIRED_NODES = ("WanSCAILToVideo", "LoadVideo", "GetVideoComponents", "ImageFromBatch", "ImageBatch", "SaveImage")
 MAX_PROBE_FRAMES = 20000  # refuse to scan driving videos longer than this
+# Replicate hard-kills predictions at 30 min; refuse requests we expect to blow it.
+MAX_SAMPLING_SECONDS = float(os.environ.get("SCAIL2_MAX_SECONDS", 26 * 60))
+EFFECTIVE_TFLOPS = float(os.environ.get("SCAIL2_TFLOPS", 350))
 
 
 def ensure_weights() -> None:
@@ -285,8 +288,14 @@ class Predictor(BasePredictor):
             shift=shift if shift > 0 else pr["shift"], sampler=pr["sampler"], scheduler=pr["scheduler"],
             output_prefix=f"{job}/f", replacement=replacement, pose_strength=pose_strength, loras=loras,
         )
+        est = pp.estimate_seconds(W, H, plan, params.steps, params.cfg, EFFECTIVE_TFLOPS)
         print(f"[sample] preset={preset} steps={params.steps} cfg={params.cfg} shift={params.shift} "
-              f"sampler={params.sampler} loras={loras} seed={seed} mode={mode}", flush=True)
+              f"sampler={params.sampler} loras={loras} seed={seed} mode={mode} est~{est / 60:.1f}min", flush=True)
+        if est > MAX_SAMPLING_SECONDS:
+            raise ValueError(
+                f"this request would sample for ~{est / 60:.0f} min ({len(plan.starts)} window(s) of {plan.length} frames at {W}x{H}, "
+                f"{params.steps} steps, CFG {params.cfg}) and Replicate stops predictions at 30 min. "
+                "Use preset='fast', fewer num_frames, or a smaller resolution.")
 
         # ---- run -------------------------------------------------------------
         out_dir = os.path.join(OUTPUT_DIR, job)

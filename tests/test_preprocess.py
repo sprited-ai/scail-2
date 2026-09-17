@@ -118,3 +118,13 @@ def test_letterbox_and_cover_geometry():
     assert lb.size == (64, 64) and tuple(np.asarray(lb)[0, 0]) == pp.WHITE and tuple(np.asarray(lb)[32, 32]) == (10, 20, 30)
     cv = pp.cover(img, 64, 64)
     assert cv.size == (64, 64) and tuple(np.asarray(cv)[0, 0]) == (10, 20, 30)
+
+
+def test_estimate_scales_with_frames_steps_and_cfg():
+    p81 = pp.plan_chunks(81)
+    q = pp.estimate_seconds(896, 512, p81, 40, 5.0, effective_tflops=170)   # measured ~1043 s on the RTX PRO 6000
+    assert 800 < q < 1300
+    f = pp.estimate_seconds(896, 512, p81, 6, 1.0, effective_tflops=170)
+    assert q / f > 12                                                        # fast preset ~10x+ cheaper
+    assert pp.estimate_seconds(512, 512, pp.plan_chunks(33), 40, 5.0) < pp.estimate_seconds(512, 512, p81, 40, 5.0)
+    assert pp.estimate_seconds(896, 512, pp.plan_chunks(161), 40, 5.0) > 1.5 * q * 170 / 350  # 3 windows of 57 (cheaper attention) still > 1.5x

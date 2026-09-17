@@ -220,3 +220,29 @@ def mask_from_alpha(alpha: np.ndarray, background: str, w: int, h: int) -> np.nd
 
 def blank_mask(background: str, w: int, h: int) -> np.ndarray:
     return colorize(np.zeros((h, w), dtype=bool), background)
+
+
+# ----------------------------------------------------------------------------
+# runtime estimate (Replicate kills predictions at 30 minutes)
+# ----------------------------------------------------------------------------
+
+WAN_PARAMS = 14e9          # SCAIL-14B (Wan 2.1 14B DiT)
+WAN_HIDDEN, WAN_LAYERS = 5120, 40
+PATCH_TOKENS = 8 * 8 * 2 * 2   # pixels per token: VAE x8 spatial, then 2x2 patch embedding
+
+
+def latent_tokens(width: int, height: int, frames: int) -> int:
+    return (((frames - 1) // 4) + 1) * (width * height // PATCH_TOKENS)
+
+
+def estimate_seconds(width: int, height: int, plan: ChunkPlan, steps: int, cfg: float,
+                     effective_tflops: float = 350.0) -> float:
+    """Rough sampling-time estimate: per forward pass, 2*params*tokens FLOPs for the
+    linear layers plus 4*tokens^2*hidden*layers for full self-attention, divided
+    by an assumed sustained throughput. CFG > 1 doubles the passes. Calibrate
+    `effective_tflops` against measured runs (an RTX PRO 6000 without fp8
+    matmul measured ~13 s/pass at 81 frames 896x512, i.e. ~170 TFLOPS)."""
+    tokens = latent_tokens(width, height, plan.length)
+    flops = 2 * WAN_PARAMS * tokens + 4 * tokens ** 2 * WAN_HIDDEN * WAN_LAYERS
+    passes = steps * (2 if cfg > 1 else 1) * len(plan.starts)
+    return passes * flops / (effective_tflops * 1e12)
