@@ -40,7 +40,8 @@ class ComfyServer:
                "--temp-directory", self.temp_dir, *self.extra_args]
         env = dict(os.environ, PYTHONUNBUFFERED="1")
         print(f"[comfy] starting: {' '.join(cmd)}", flush=True)
-        self.proc = subprocess.Popen(cmd, cwd=self.comfy_dir, env=env)
+        # stdin=DEVNULL: the server must never share the predictor's stdin
+        self.proc = subprocess.Popen(cmd, cwd=self.comfy_dir, env=env, stdin=subprocess.DEVNULL)
 
     def alive(self) -> bool:
         return self.proc is not None and self.proc.poll() is None
