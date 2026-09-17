@@ -2,7 +2,7 @@
 # Create the public model entry on Replicate before the first `cog push`.
 # Reads REPLICATE_API_TOKEN from the environment (or ../sprute/.env).
 set -euo pipefail
-: "${REPLICATE_API_TOKEN:=$(grep -E '^REPLICATE_API_TOKEN=' "$(dirname "$0")/../../sprute/.env" | cut -d= -f2- | tr -d '"'"'"')}"
+: "${REPLICATE_API_TOKEN:=$(grep -E '^REPLICATE_API_TOKEN=' "$(dirname "$0")/../../sprute/.env" | sed -e 's/^[^=]*=//' -e 's/["'"'"']//g')}"
 OWNER=${OWNER:-sprited}; NAME=${NAME:-scail-2}; HARDWARE=${HARDWARE:-gpu-h100}
 curl -sS -X POST https://api.replicate.com/v1/models \
   -H "Authorization: Bearer $REPLICATE_API_TOKEN" -H "Content-Type: application/json" \
