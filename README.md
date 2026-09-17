@@ -45,7 +45,7 @@ What this endpoint gives you:
 | `image` | — | reference character. Transparent PNGs are flattened on white and their alpha becomes the reference mask |
 | `video` | — | driving video; its aspect ratio sets the output size |
 | `prompt` | `""` | describe the character and the motion (a description of the final video, not instructions) |
-| `negative_prompt` | `""` | e.g. `distorted limbs, camera movement` |
+| `negative_prompt` | `""` | e.g. `distorted limbs, camera movement`; empty = Wan 2.1's standard negative prompt when CFG > 1 |
 | `mode` | `animation` | `animation` or `replacement` |
 | `image_mask` / `video_mask` | — | optional masks (see below) |
 | `auto_mask` | `true` | derive missing masks (alpha channel → BiRefNet). Off = no masks |

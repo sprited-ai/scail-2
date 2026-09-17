@@ -51,6 +51,13 @@ WEIGHTS = {
     "loras/lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors":
         (f"{HF}/Kijai/WanVideo_comfy/resolve/main/Lightx2v/lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors", 738005744),
 }
+# Wan 2.1's stock negative prompt (what the official generate.py samples against).
+# Used whenever the caller leaves negative_prompt empty and CFG > 1: Wan-family
+# models are trained to be guided *away* from this, and an empty negative makes
+# CFG a no-op (identical cond/uncond), which visibly degrades the quality preset.
+DEFAULT_NEGATIVE = ("色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，"
+                    "JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，"
+                    "形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走")
 REQUIRED_NODES = ("WanSCAILToVideo", "LoadVideo", "GetVideoComponents", "ImageFromBatch", "ImageBatch", "SaveImage")
 MAX_PROBE_FRAMES = 20000  # refuse to scan driving videos longer than this
 
@@ -175,7 +182,7 @@ class Predictor(BasePredictor):
         image: Path = Input(description="Reference character image. Transparent PNGs are composited on white and their alpha becomes the reference mask."),
         video: Path = Input(description="Driving video (mp4/mov/webm/mkv). Its motion is transferred to the character; its aspect ratio sets the output size unless width/height are given."),
         prompt: str = Input(default="", description="Describe the character and the motion, e.g. 'A cartoon robot walking in place, side view'. Describes the final video; not instructions."),
-        negative_prompt: str = Input(default="", description="What to avoid, e.g. 'distorted limbs, camera movement, blurry'."),
+        negative_prompt: str = Input(default="", description="What to avoid, e.g. 'distorted limbs, camera movement, blurry'. Empty = Wan 2.1's standard negative prompt (the one the official sampler uses) when guidance is on."),
         mode: str = Input(default="animation", choices=["animation", "replacement"],
                           description="animation: the reference character (and its background) performs the driving motion. replacement: the character is placed into the driving video, keeping its background and lighting."),
         image_mask: Path = Input(default=None, description="Optional mask for the reference: a grayscale/black-and-white matte (white = character) or a SCAIL-2 palette mask (blue = identity 0). If omitted and auto_mask is on, one is derived from the image's alpha channel or BiRefNet."),
@@ -263,6 +270,9 @@ class Predictor(BasePredictor):
 
         # ---- sampling settings ---------------------------------------------
         pr = PRESETS[preset]
+        cfg = guidance_scale if guidance_scale > 0 else pr["cfg"]
+        if not negative_prompt.strip() and cfg > 1:
+            negative_prompt = DEFAULT_NEGATIVE
         loras = list(pr["loras"])
         if dpo_lora > 0:
             loras.append((LORA_DPO, dpo_lora))
@@ -271,7 +281,7 @@ class Predictor(BasePredictor):
         params = GraphParams(
             ref_image=ref_name, drive_video=drive_name, ref_mask=ref_mask_name, drive_mask=drive_mask_name,
             prompt=prompt, negative_prompt=negative_prompt, width=W, height=H, plan=plan, seed=seed,
-            steps=steps or pr["steps"], cfg=guidance_scale if guidance_scale > 0 else pr["cfg"],
+            steps=steps or pr["steps"], cfg=cfg,
             shift=shift if shift > 0 else pr["shift"], sampler=pr["sampler"], scheduler=pr["scheduler"],
             output_prefix=f"{job}/f", replacement=replacement, pose_strength=pose_strength, loras=loras,
         )
