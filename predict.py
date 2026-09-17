@@ -63,9 +63,9 @@ def ensure_weights() -> None:
         os.makedirs(os.path.dirname(dest), exist_ok=True)
         print(f"[weights] fetching {rel} ({size / 1e9:.1f} GB)", flush=True)
         if shutil.which("pget"):
-            subprocess.check_call(["pget", "-f", url, dest])
+            subprocess.check_call(["pget", "-f", url, dest], stdin=subprocess.DEVNULL)
         else:
-            subprocess.check_call(["curl", "-fL", "--retry", "5", "-o", dest, url])
+            subprocess.check_call(["curl", "-fsSL", "--retry", "5", "-o", dest, url], stdin=subprocess.DEVNULL)
         got = os.path.getsize(dest)
         if got != size:
             raise RuntimeError(f"{rel}: expected {size} bytes, got {got}")
@@ -138,11 +138,11 @@ def write_video(path: str, frames: list[np.ndarray], fps: float, lossless: bool 
 
 def encode_mp4(frame_glob_pattern: str, n_frames: int, fps: float, out: str, crf: int = 15) -> None:
     subprocess.check_call([
-        "ffmpeg", "-y", "-loglevel", "error", "-framerate", f"{fps:.6f}", "-start_number", "1",
+        "ffmpeg", "-nostdin", "-y", "-loglevel", "error", "-framerate", f"{fps:.6f}", "-start_number", "1",
         "-i", frame_glob_pattern, "-frames:v", str(n_frames),
         "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", str(crf), "-preset", "medium",
         "-movflags", "+faststart", out,
-    ])
+    ], stdin=subprocess.DEVNULL)
 
 
 # ----------------------------------------------------------------------------
