@@ -2,8 +2,8 @@
 #
 # Runs the official ComfyUI implementation headless (WanSCAILToVideo,
 # ComfyUI v0.33.1 pinned by commit) on the Comfy-Org fp8 repack of the 14B
-# model. All weights (~30 GB) are baked into the image so cold starts don't
-# hit HuggingFace; predict.py re-fetches anything missing as a fallback.
+# model. Weights (~30 GB) are downloaded at setup() with pget (baking them made
+# a 50 GB image that never finished booting on Replicate); BiRefNet is baked.
 # See README.md / NOTICE.
 build:
   gpu: true
@@ -23,17 +23,9 @@ build:
     # requirements into the uv-managed 3.12.12 that /usr/bin/python3 points at, and
     # its CMD runs bare `python`. Keep everything in the uv interpreter.
     - uv pip install --python /usr/bin/python3 --break-system-packages -r /ComfyUI/requirements.txt
+    # Model weights (~30 GB) are NOT baked: a 50 GB image never finished booting on
+    # Replicate, so predict.py's setup() fetches them with pget (see WEIGHTS there).
     - mkdir -p /ComfyUI/models/diffusion_models /ComfyUI/models/text_encoders /ComfyUI/models/vae /ComfyUI/models/clip_vision /ComfyUI/models/loras
-    # SCAIL-2 14B, fp8 scaled (Comfy-Org repack of zai-org/SCAIL-2, MIT) — 17.7 GB
-    - pget https://huggingface.co/Comfy-Org/SCAIL-2/resolve/main/diffusion_models/wan2.1_14B_SCAIL_2_fp8_scaled.safetensors /ComfyUI/models/diffusion_models/wan2.1_14B_SCAIL_2_fp8_scaled.safetensors
-    # Wan 2.1 text encoder (umT5-XXL fp8), VAE, CLIP-ViT-H — 6.7 / 0.25 / 1.3 GB
-    - pget https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors /ComfyUI/models/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors
-    - pget https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors /ComfyUI/models/vae/wan_2.1_vae.safetensors
-    - pget https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/clip_vision/clip_vision_h.safetensors /ComfyUI/models/clip_vision/clip_vision_h.safetensors
-    # official SCAIL-2 LoRAs (DPO, relighting) + lightx2v step/cfg distill — 1.2 / 1.2 / 0.7 GB
-    - pget https://huggingface.co/Comfy-Org/SCAIL-2/resolve/main/loras/wan2.1_SCAIL_2_DPO_lora_bf16.safetensors /ComfyUI/models/loras/wan2.1_SCAIL_2_DPO_lora_bf16.safetensors
-    - pget https://huggingface.co/Comfy-Org/SCAIL-2/resolve/main/loras/wan2.1_SCAIL_2_relight_lora_bf16.safetensors /ComfyUI/models/loras/wan2.1_SCAIL_2_relight_lora_bf16.safetensors
-    - pget https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Lightx2v/lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors /ComfyUI/models/loras/lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors
     # BiRefNet (MIT) for automatic single-subject masks — 0.9 GB into the HF cache
     - python3 -c "from huggingface_hub import snapshot_download; snapshot_download('ZhengPeng7/BiRefNet')"
     # cog runtime into the same interpreter, `python` alias for cog's CMD, and a loud check

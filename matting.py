@@ -22,7 +22,11 @@ class BiRefNetMatter:
             return
         from transformers import AutoModelForImageSegmentation
         print("[matting] loading BiRefNet", flush=True)
-        model = AutoModelForImageSegmentation.from_pretrained(REPO, trust_remote_code=True)
+        try:  # baked HF cache first; only touch the Hub if it is missing
+            model = AutoModelForImageSegmentation.from_pretrained(REPO, trust_remote_code=True, local_files_only=True)
+        except Exception as e:  # noqa: BLE001
+            print(f"[matting] cache miss ({type(e).__name__}); downloading", flush=True)
+            model = AutoModelForImageSegmentation.from_pretrained(REPO, trust_remote_code=True)
         model = model.to(self.device).eval()
         self.half = self.device == "cuda"
         if self.half:
