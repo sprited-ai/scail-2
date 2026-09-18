@@ -15,7 +15,7 @@ IMAGE=$1; VIDEO=$2; OUT=$3; EXTRA=${4:-'{}'}
 AUTH="Authorization: Bearer $REPLICATE_API_TOKEN"
 API=https://api.replicate.com/v1
 
-upload() { curl -sS -X POST "$API/files" -H "$AUTH" -F "content=@$1" | python3 -c 'import sys,json; print(json.load(sys.stdin)["urls"]["get"])'; }
+upload() { curl -sS --max-time 300 -X POST "$API/files" -H "$AUTH" -F "content=@$1" | python3 -c 'import sys,json; print(json.load(sys.stdin)["urls"]["get"])'; }
 IMG_URL=$(upload "$IMAGE"); VID_URL=$(upload "$VIDEO")
 echo "uploaded: $IMG_URL"; echo "uploaded: $VID_URL"
 
@@ -27,15 +27,15 @@ print(json.dumps({"input": inp}))
 PY
 )
 # private models can't use the models/…/predictions shortcut: run the latest version by id
-VERSION=${VERSION:-$(curl -sS "$API/models/$MODEL" -H "$AUTH" | python3 -c 'import sys,json; print(json.load(sys.stdin)["latest_version"]["id"])')}
+VERSION=${VERSION:-$(curl -sS --max-time 60 "$API/models/$MODEL" -H "$AUTH" | python3 -c 'import sys,json; print(json.load(sys.stdin)["latest_version"]["id"])')}
 echo "version: $VERSION"
 BODY=$(echo "$BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); d['version']='$VERSION'; print(json.dumps(d))")
-PRED=$(curl -sS -X POST "$API/predictions" -H "$AUTH" -H "Content-Type: application/json" -d "$BODY")
+PRED=$(curl -sS --max-time 120 -X POST "$API/predictions" -H "$AUTH" -H "Content-Type: application/json" -d "$BODY")
 ID=$(echo "$PRED" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("id") or sys.exit("create failed: "+json.dumps(d)))')
 echo "prediction: https://replicate.com/p/$ID"
 
 while :; do
-  P=$(curl -sS "$API/predictions/$ID" -H "$AUTH")
+  P=$(curl -sS --max-time 60 "$API/predictions/$ID" -H "$AUTH" || echo "{\"status\":\"unknown\"}")
   STATUS=$(echo "$P" | python3 -c 'import sys,json; print(json.load(sys.stdin)["status"])')
   case "$STATUS" in
     succeeded|failed|canceled) break ;;
@@ -53,4 +53,4 @@ out = d["output"]; print("output:", json.dumps(out)[:500])
 print((d.get("logs") or "")[-1500:])
 open("/tmp/_scail2_out_url", "w").write(out["video"] if isinstance(out, dict) else out)
 '
-curl -sSL -o "$OUT" "$(cat /tmp/_scail2_out_url)" && echo "saved $OUT" && ffprobe -v error -select_streams v:0 -show_entries stream=width,height,r_frame_rate,nb_frames -of csv=p=0 "$OUT"
+curl -sSL --max-time 600 -o "$OUT" "$(cat /tmp/_scail2_out_url)" && echo "saved $OUT" && ffprobe -v error -select_streams v:0 -show_entries stream=width,height,r_frame_rate,nb_frames -of csv=p=0 "$OUT"
