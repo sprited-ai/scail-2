@@ -5,7 +5,7 @@
 set -uo pipefail
 IMAGE=$1; TIMEOUT=${2:-900}
 NAME=scail2-smoke-$$
-docker run -d --name "$NAME" -e CUDA_VISIBLE_DEVICES= -p 127.0.0.1:5055:5000 "$IMAGE" >/dev/null
+docker run -d --name "$NAME" -e CUDA_VISIBLE_DEVICES= -e COMFY_EXTRA_ARGS=--cpu -p 127.0.0.1:5055:5000 "$IMAGE" >/dev/null
 for i in $(seq 1 $((TIMEOUT / 5))); do
   H=$(curl -s --max-time 5 http://127.0.0.1:5055/health-check || true)
   S=$(echo "$H" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("status"))' 2>/dev/null)

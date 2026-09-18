@@ -163,7 +163,8 @@ class Predictor(BasePredictor):
         ensure_weights()
         for d in (INPUT_DIR, OUTPUT_DIR, TEMP_DIR):
             os.makedirs(d, exist_ok=True)
-        self.comfy = ComfyServer(COMFY_DIR, INPUT_DIR, OUTPUT_DIR, TEMP_DIR)
+        extra = tuple(os.environ.get("COMFY_EXTRA_ARGS", "").split())  # e.g. "--cpu" for CPU smoke tests
+        self.comfy = ComfyServer(COMFY_DIR, INPUT_DIR, OUTPUT_DIR, TEMP_DIR, extra_args=extra)
         self.comfy.start()
         self.comfy.wait_ready()
         info = self.comfy.object_info()
