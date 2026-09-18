@@ -1,4 +1,4 @@
-"""SCAIL-2 (zai-org) end-to-end character animation on Replicate.
+"""SCAIL-2 (zai-org) end-to-end character animation on Replicate. (build 2026-09-18a)
 
 Runs the official ComfyUI implementation (WanSCAILToVideo, ComfyUI v0.33.1)
 headless, on the Comfy-Org fp8 repack of the 14B model. Inputs are prepared
