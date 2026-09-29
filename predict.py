@@ -27,14 +27,15 @@ import preprocess as pp
 from comfy_client import ComfyServer
 from matting import BiRefNetMatter
 from workflow import LORA_DPO, LORA_RELIGHT, PRESETS, GraphParams, build_graph
+from runtime_limits import deadline
 
 COMFY_DIR = os.environ.get("COMFY_DIR", "/ComfyUI")
 WORK = os.environ.get("SCAIL2_WORK", "/tmp/scail2")
 INPUT_DIR, OUTPUT_DIR, TEMP_DIR = f"{WORK}/input", f"{WORK}/output", f"{WORK}/temp"
 
 HF = "https://huggingface.co"
-# path under COMFY_DIR/models -> (url, size in bytes). Baked into the image by
-# cog.yaml; setup() re-downloads anything missing or truncated.
+# path under COMFY_DIR/models -> (build-time download URL, size in bytes).
+# cog.yaml bundles these files; setup() only verifies them.
 WEIGHTS = {
     "diffusion_models/wan2.1_14B_SCAIL_2_fp8_scaled.safetensors":
         (f"{HF}/Comfy-Org/SCAIL-2/resolve/main/diffusion_models/wan2.1_14B_SCAIL_2_fp8_scaled.safetensors", 17694586857),
@@ -53,25 +54,20 @@ WEIGHTS = {
 }
 REQUIRED_NODES = ("WanSCAILToVideo", "LoadVideo", "GetVideoComponents", "ImageFromBatch", "ImageBatch", "SaveImage")
 MAX_PROBE_FRAMES = 20000  # refuse to scan driving videos longer than this
-# Replicate hard-kills predictions at 30 min; refuse requests we expect to blow it.
-MAX_SAMPLING_SECONDS = float(os.environ.get("SCAIL2_MAX_SECONDS", 26 * 60))
+# Leave headroom for preprocessing/encoding within the hard predict deadline.
+MAX_SAMPLING_SECONDS = 12 * 60
 EFFECTIVE_TFLOPS = float(os.environ.get("SCAIL2_TFLOPS", 350))
 
 
 def ensure_weights() -> None:
-    for rel, (url, size) in WEIGHTS.items():
+    """Validate image-bundled weights. Runtime startup never downloads models."""
+    for rel, (_, size) in WEIGHTS.items():
         dest = os.path.join(COMFY_DIR, "models", rel)
-        if os.path.exists(dest) and os.path.getsize(dest) == size:
-            continue
-        os.makedirs(os.path.dirname(dest), exist_ok=True)
-        print(f"[weights] fetching {rel} ({size / 1e9:.1f} GB)", flush=True)
-        if shutil.which("pget"):
-            subprocess.check_call(["pget", "-f", url, dest], stdin=subprocess.DEVNULL)
-        else:
-            subprocess.check_call(["curl", "-fsSL", "--retry", "5", "-o", dest, url], stdin=subprocess.DEVNULL)
+        if not os.path.isfile(dest):
+            raise RuntimeError(f"Missing bundled weight: {dest}. Rebuild the Cog image.")
         got = os.path.getsize(dest)
         if got != size:
-            raise RuntimeError(f"{rel}: expected {size} bytes, got {got}")
+            raise RuntimeError(f"{rel}: expected {size} bytes, got {got}. Rebuild the Cog image.")
 
 
 # ----------------------------------------------------------------------------
@@ -159,20 +155,23 @@ class Output(BaseModel):
 
 class Predictor(BasePredictor):
     def setup(self) -> None:
-        t0 = time.time()
-        ensure_weights()
-        for d in (INPUT_DIR, OUTPUT_DIR, TEMP_DIR):
-            os.makedirs(d, exist_ok=True)
-        extra = tuple(os.environ.get("COMFY_EXTRA_ARGS", "").split())  # e.g. "--cpu" for CPU smoke tests
-        self.comfy = ComfyServer(COMFY_DIR, INPUT_DIR, OUTPUT_DIR, TEMP_DIR, extra_args=extra)
-        self.comfy.start()
-        self.comfy.wait_ready()
-        info = self.comfy.object_info()
-        missing = [n for n in REQUIRED_NODES if n not in info]
-        if missing:
-            raise RuntimeError(f"ComfyUI is missing nodes {missing}; is the checkout the pinned version?")
-        self.matter = BiRefNetMatter("cuda")
-        print(f"[setup] ready in {time.time() - t0:.0f}s", flush=True)
+        with deadline(600, "setup"):
+            t0 = time.time()
+            print("[setup] validating bundled weights", flush=True)
+            ensure_weights()
+            print("[setup] bundled weights verified; starting ComfyUI", flush=True)
+            for d in (INPUT_DIR, OUTPUT_DIR, TEMP_DIR):
+                os.makedirs(d, exist_ok=True)
+            extra = tuple(os.environ.get("COMFY_EXTRA_ARGS", "").split())  # e.g. "--cpu" for CPU smoke tests
+            self.comfy = ComfyServer(COMFY_DIR, INPUT_DIR, OUTPUT_DIR, TEMP_DIR, extra_args=extra)
+            self.comfy.start()
+            self.comfy.wait_ready()
+            info = self.comfy.object_info()
+            missing = [n for n in REQUIRED_NODES if n not in info]
+            if missing:
+                raise RuntimeError(f"ComfyUI is missing nodes {missing}; is the checkout the pinned version?")
+            self.matter = BiRefNetMatter("cuda")
+            print(f"[setup] ready in {time.time() - t0:.0f}s", flush=True)
 
     def predict(
         self,
@@ -201,122 +200,126 @@ class Predictor(BasePredictor):
         seed: Optional[int] = Input(default=None, description="Random seed; leave empty for random."),
         return_masks: bool = Input(default=False, description="Also return the reference/driving masks that were used (for debugging or re-use as image_mask / video_mask)."),
     ) -> Output:
-        t0 = time.time()
-        job = uuid.uuid4().hex[:12]
-        if seed is None:
-            seed = random.randrange(2**31)
-        replacement = mode == "replacement"
-        drive_bg = "white" if replacement else "black"   # driving mask background per SCAIL-2 convention
-        ref_bg = "black" if replacement else "white"     # reference mask background (the opposite)
-        if relight_lora > 0 and not replacement:
-            print("[warn] relight_lora is meant for replacement mode; applying anyway", flush=True)
+        with deadline(840, "predict"):
+            t0 = time.time()
+            if not self.comfy.alive():
+                self.comfy.start()
+                self.comfy.wait_ready()
+            job = uuid.uuid4().hex[:12]
+            if seed is None:
+                seed = random.randrange(2**31)
+            replacement = mode == "replacement"
+            drive_bg = "white" if replacement else "black"   # driving mask background per SCAIL-2 convention
+            ref_bg = "black" if replacement else "white"     # reference mask background (the opposite)
+            if relight_lora > 0 and not replacement:
+                print("[warn] relight_lora is meant for replacement mode; applying anyway", flush=True)
 
-        # ---- driving video -> frames at the output size ---------------------
-        n_src, src_fps, sw, sh = probe_video(str(video))
-        if n_src == 0:
-            raise ValueError("could not read any frames from the driving video")
-        W, H = pp.target_size(sw, sh, resolution, width, height)
-        limit = min(num_frames or pp.MAX_FRAMES, pp.MAX_FRAMES)
-        sel = pp.select_frames(n_src, src_fps, fps, limit)
-        if len(sel) < 5:
-            raise ValueError(f"driving video too short: {len(sel)} usable frames (need at least 5)")
-        n = len(sel)
-        out_fps = float(fps) if fps > 0 else src_fps
-        plan = pp.plan_chunks(n)
-        print(f"[input] driver {sw}x{sh}@{src_fps:.3f}fps x{n_src} -> {W}x{H}@{out_fps:.3f}fps x{n} "
-              f"(windows: {len(plan.starts)} x {plan.length})", flush=True)
-        frames = decode_selected(str(video), sel, lambda im: np.asarray(pp.cover(im.convert("RGB"), W, H)))
+            # ---- driving video -> frames at the output size ---------------------
+            n_src, src_fps, sw, sh = probe_video(str(video))
+            if n_src == 0:
+                raise ValueError("could not read any frames from the driving video")
+            W, H = pp.target_size(sw, sh, resolution, width, height)
+            limit = min(num_frames or pp.MAX_FRAMES, pp.MAX_FRAMES)
+            sel = pp.select_frames(n_src, src_fps, fps, limit)
+            if len(sel) < 5:
+                raise ValueError(f"driving video too short: {len(sel)} usable frames (need at least 5)")
+            n = len(sel)
+            out_fps = float(fps) if fps > 0 else src_fps
+            plan = pp.plan_chunks(n)
+            print(f"[input] driver {sw}x{sh}@{src_fps:.3f}fps x{n_src} -> {W}x{H}@{out_fps:.3f}fps x{n} "
+                  f"(windows: {len(plan.starts)} x {plan.length})", flush=True)
+            frames = decode_selected(str(video), sel, lambda im: np.asarray(pp.cover(im.convert("RGB"), W, H)))
 
-        # ---- driving mask ---------------------------------------------------
-        drive_mask: list[np.ndarray] | None = None
-        if video_mask is not None:
-            m_n, _, _, _ = probe_video(str(video_mask))
-            m_sel = pp.map_indices(sel, n_src, m_n)
-            drive_mask = decode_selected(str(video_mask), m_sel, lambda im: pp.mask_from_image(im, drive_bg, W, H, "cover"))
-        elif auto_mask:
-            t = time.time()
-            drive_mask = [pp.colorize(m, drive_bg) for m in self.matter.masks(frames)]
-            print(f"[mask] BiRefNet on {n} driving frames in {time.time() - t:.1f}s", flush=True)
+            # ---- driving mask ---------------------------------------------------
+            drive_mask: list[np.ndarray] | None = None
+            if video_mask is not None:
+                m_n, _, _, _ = probe_video(str(video_mask))
+                m_sel = pp.map_indices(sel, n_src, m_n)
+                drive_mask = decode_selected(str(video_mask), m_sel, lambda im: pp.mask_from_image(im, drive_bg, W, H, "cover"))
+            elif auto_mask:
+                t = time.time()
+                drive_mask = [pp.colorize(m, drive_bg) for m in self.matter.masks(frames)]
+                print(f"[mask] BiRefNet on {n} driving frames in {time.time() - t:.1f}s", flush=True)
 
-        # ---- reference image + mask ----------------------------------------
-        ref_rgb, alpha = pp.flatten_alpha(Image.open(str(image)))
-        ref = pp.letterbox(ref_rgb, W, H, pp.WHITE)
-        ref_mask: np.ndarray | None = None
-        if image_mask is not None:
-            ref_mask = pp.mask_from_image(Image.open(str(image_mask)), ref_bg, W, H, "letterbox")
-        elif auto_mask:
-            if alpha is not None and alpha.min() < 128:
-                ref_mask = pp.mask_from_alpha(alpha, ref_bg, W, H)
-                print("[mask] reference mask from alpha channel", flush=True)
-            else:
-                ref_mask = pp.colorize(self.matter.masks([np.asarray(ref)])[0], ref_bg)
-                print("[mask] reference mask from BiRefNet", flush=True)
+            # ---- reference image + mask ----------------------------------------
+            ref_rgb, alpha = pp.flatten_alpha(Image.open(str(image)))
+            ref = pp.letterbox(ref_rgb, W, H, pp.WHITE)
+            ref_mask: np.ndarray | None = None
+            if image_mask is not None:
+                ref_mask = pp.mask_from_image(Image.open(str(image_mask)), ref_bg, W, H, "letterbox")
+            elif auto_mask:
+                if alpha is not None and alpha.min() < 128:
+                    ref_mask = pp.mask_from_alpha(alpha, ref_bg, W, H)
+                    print("[mask] reference mask from alpha channel", flush=True)
+                else:
+                    ref_mask = pp.colorize(self.matter.masks([np.asarray(ref)])[0], ref_bg)
+                    print("[mask] reference mask from BiRefNet", flush=True)
 
-        # ---- stage inputs for ComfyUI ---------------------------------------
-        pad = plan.total - n
-        ref_name, drive_name = f"{job}-ref.png", f"{job}-drive.mkv"
-        ref.save(os.path.join(INPUT_DIR, ref_name))
-        write_video(os.path.join(INPUT_DIR, drive_name), frames + [frames[-1]] * pad, out_fps)
-        ref_mask_name = drive_mask_name = None
-        if ref_mask is not None:
-            ref_mask_name = f"{job}-refmask.png"
-            Image.fromarray(ref_mask).save(os.path.join(INPUT_DIR, ref_mask_name))
-        if drive_mask is not None:
-            drive_mask_name = f"{job}-drivemask.mkv"
-            write_video(os.path.join(INPUT_DIR, drive_mask_name), drive_mask + [drive_mask[-1]] * pad, out_fps)
+            # ---- stage inputs for ComfyUI ---------------------------------------
+            pad = plan.total - n
+            ref_name, drive_name = f"{job}-ref.png", f"{job}-drive.mkv"
+            ref.save(os.path.join(INPUT_DIR, ref_name))
+            write_video(os.path.join(INPUT_DIR, drive_name), frames + [frames[-1]] * pad, out_fps)
+            ref_mask_name = drive_mask_name = None
+            if ref_mask is not None:
+                ref_mask_name = f"{job}-refmask.png"
+                Image.fromarray(ref_mask).save(os.path.join(INPUT_DIR, ref_mask_name))
+            if drive_mask is not None:
+                drive_mask_name = f"{job}-drivemask.mkv"
+                write_video(os.path.join(INPUT_DIR, drive_mask_name), drive_mask + [drive_mask[-1]] * pad, out_fps)
 
-        # ---- sampling settings ---------------------------------------------
-        pr = PRESETS[preset]
-        cfg = guidance_scale if guidance_scale > 0 else pr["cfg"]
-        loras = list(pr["loras"])
-        if dpo_lora > 0:
-            loras.append((LORA_DPO, dpo_lora))
-        if relight_lora > 0:
-            loras.append((LORA_RELIGHT, relight_lora))
-        params = GraphParams(
-            ref_image=ref_name, drive_video=drive_name, ref_mask=ref_mask_name, drive_mask=drive_mask_name,
-            prompt=prompt, negative_prompt=negative_prompt, width=W, height=H, plan=plan, seed=seed,
-            steps=steps or pr["steps"], cfg=cfg,
-            shift=shift if shift > 0 else pr["shift"], sampler=pr["sampler"], scheduler=pr["scheduler"],
-            output_prefix=f"{job}/f", replacement=replacement, pose_strength=pose_strength, loras=loras,
-        )
-        est = pp.estimate_seconds(W, H, plan, params.steps, params.cfg, EFFECTIVE_TFLOPS)
-        print(f"[sample] preset={preset} steps={params.steps} cfg={params.cfg} shift={params.shift} "
-              f"sampler={params.sampler} loras={loras} seed={seed} mode={mode} est~{est / 60:.1f}min", flush=True)
-        if est > MAX_SAMPLING_SECONDS:
-            raise ValueError(
-                f"this request would sample for ~{est / 60:.0f} min ({len(plan.starts)} window(s) of {plan.length} frames at {W}x{H}, "
-                f"{params.steps} steps, CFG {params.cfg}) and Replicate stops predictions at 30 min. "
-                "Use preset='fast', fewer num_frames, or a smaller resolution.")
+            # ---- sampling settings ---------------------------------------------
+            pr = PRESETS[preset]
+            cfg = guidance_scale if guidance_scale > 0 else pr["cfg"]
+            loras = list(pr["loras"])
+            if dpo_lora > 0:
+                loras.append((LORA_DPO, dpo_lora))
+            if relight_lora > 0:
+                loras.append((LORA_RELIGHT, relight_lora))
+            params = GraphParams(
+                ref_image=ref_name, drive_video=drive_name, ref_mask=ref_mask_name, drive_mask=drive_mask_name,
+                prompt=prompt, negative_prompt=negative_prompt, width=W, height=H, plan=plan, seed=seed,
+                steps=steps or pr["steps"], cfg=cfg,
+                shift=shift if shift > 0 else pr["shift"], sampler=pr["sampler"], scheduler=pr["scheduler"],
+                output_prefix=f"{job}/f", replacement=replacement, pose_strength=pose_strength, loras=loras,
+            )
+            est = pp.estimate_seconds(W, H, plan, params.steps, params.cfg, EFFECTIVE_TFLOPS)
+            print(f"[sample] preset={preset} steps={params.steps} cfg={params.cfg} shift={params.shift} "
+                  f"sampler={params.sampler} loras={loras} seed={seed} mode={mode} est~{est / 60:.1f}min", flush=True)
+            if est > MAX_SAMPLING_SECONDS:
+                raise ValueError(
+                    f"this request would sample for ~{est / 60:.0f} min ({len(plan.starts)} window(s) of {plan.length} frames at {W}x{H}, "
+                    f"{params.steps} steps, CFG {params.cfg}), exceeding our 12-minute sampling budget. "
+                    "Use preset='fast', fewer num_frames, or a smaller resolution.")
 
-        # ---- run -------------------------------------------------------------
-        out_dir = os.path.join(OUTPUT_DIR, job)
-        try:
-            t = time.time()
-            self.comfy.run(build_graph(params), timeout=3 * 3600)
-            print(f"[sample] done in {time.time() - t:.0f}s", flush=True)
-            produced = sorted(glob.glob(os.path.join(out_dir, "f_*_.png")))
-            if len(produced) < n:
-                raise RuntimeError(f"expected {n} frames, ComfyUI produced {len(produced)}")
-            out_path = os.path.join(WORK, f"{job}.mp4")
-            encode_mp4(os.path.join(out_dir, "f_%05d_.png"), n, out_fps, out_path)
-            result = Output(video=Path(out_path), seed=seed)
-            if return_masks:
-                if ref_mask is not None:
-                    rm = os.path.join(WORK, f"{job}-reference-mask.png")
-                    Image.fromarray(ref_mask).save(rm)
-                    result.reference_mask = Path(rm)
-                if drive_mask is not None:
-                    dm = os.path.join(WORK, f"{job}-driving-mask.mp4")
-                    write_video(dm, drive_mask, out_fps, lossless=False)
-                    result.driving_mask = Path(dm)
-        finally:
-            for name in (ref_name, drive_name, ref_mask_name, drive_mask_name):
-                if name:
-                    try:
-                        os.remove(os.path.join(INPUT_DIR, name))
-                    except OSError:
-                        pass
-            shutil.rmtree(out_dir, ignore_errors=True)
-        print(f"[done] {n} frames {W}x{H} in {time.time() - t0:.0f}s", flush=True)
-        return result
+            # ---- run -------------------------------------------------------------
+            out_dir = os.path.join(OUTPUT_DIR, job)
+            try:
+                t = time.time()
+                self.comfy.run(build_graph(params), timeout=MAX_SAMPLING_SECONDS)
+                print(f"[sample] done in {time.time() - t:.0f}s", flush=True)
+                produced = sorted(glob.glob(os.path.join(out_dir, "f_*_.png")))
+                if len(produced) < n:
+                    raise RuntimeError(f"expected {n} frames, ComfyUI produced {len(produced)}")
+                out_path = os.path.join(WORK, f"{job}.mp4")
+                encode_mp4(os.path.join(out_dir, "f_%05d_.png"), n, out_fps, out_path)
+                result = Output(video=Path(out_path), seed=seed)
+                if return_masks:
+                    if ref_mask is not None:
+                        rm = os.path.join(WORK, f"{job}-reference-mask.png")
+                        Image.fromarray(ref_mask).save(rm)
+                        result.reference_mask = Path(rm)
+                    if drive_mask is not None:
+                        dm = os.path.join(WORK, f"{job}-driving-mask.mp4")
+                        write_video(dm, drive_mask, out_fps, lossless=False)
+                        result.driving_mask = Path(dm)
+            finally:
+                for name in (ref_name, drive_name, ref_mask_name, drive_mask_name):
+                    if name:
+                        try:
+                            os.remove(os.path.join(INPUT_DIR, name))
+                        except OSError:
+                            pass
+                shutil.rmtree(out_dir, ignore_errors=True)
+            print(f"[done] {n} frames {W}x{H} in {time.time() - t0:.0f}s", flush=True)
+            return result

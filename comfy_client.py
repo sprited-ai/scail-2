@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -41,12 +42,13 @@ class ComfyServer:
         env = dict(os.environ, PYTHONUNBUFFERED="1")
         print(f"[comfy] starting: {' '.join(cmd)}", flush=True)
         # stdin=DEVNULL: the server must never share the predictor's stdin
-        self.proc = subprocess.Popen(cmd, cwd=self.comfy_dir, env=env, stdin=subprocess.DEVNULL)
+        self.proc = subprocess.Popen(cmd, cwd=self.comfy_dir, env=env, stdin=subprocess.DEVNULL,
+                                     start_new_session=True)
 
     def alive(self) -> bool:
         return self.proc is not None and self.proc.poll() is None
 
-    def wait_ready(self, timeout: float = 900) -> None:
+    def wait_ready(self, timeout: float = 120) -> None:
         deadline = time.time() + timeout
         while time.time() < deadline:
             if not self.alive():
@@ -61,11 +63,12 @@ class ComfyServer:
 
     def stop(self) -> None:
         if self.alive():
-            self.proc.terminate()
+            os.killpg(self.proc.pid, signal.SIGTERM)
             try:
                 self.proc.wait(10)
             except subprocess.TimeoutExpired:
-                self.proc.kill()
+                os.killpg(self.proc.pid, signal.SIGKILL)
+                self.proc.wait()
 
     # -- http ----------------------------------------------------------------
     def get(self, path: str):
@@ -129,6 +132,10 @@ class ComfyServer:
                     raise ComfyError(f"{d.get('node_type')} ({d.get('node_id')}): {d.get('exception_message')}\n{tb}")
                 elif t == "execution_interrupted":
                     raise ComfyError("execution interrupted")
+        except BaseException:
+            # A disconnected client or expired wait must not leave GPU work running.
+            self.stop()
+            raise
         finally:
             ws.close()
         hist = self.get(f"/history/{prompt_id}").get(prompt_id)

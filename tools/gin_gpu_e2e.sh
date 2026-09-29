@@ -7,6 +7,7 @@
 set -uo pipefail
 IMAGE=$1; REF=$2; VID=$3; OUT=$4; EXTRA=${5:-'{}'}
 NAME=scail2-e2e-$$; PORT=5056
+trap 'docker rm -f "$NAME" >/dev/null 2>&1 || true' EXIT
 LIB=/usr/lib/x86_64-linux-gnu; VER=$(ls $LIB/libcuda.so.[0-9]* | sed 's/.*libcuda\.so\.//' | sort -V | tail -1)
 docker run -d --name "$NAME" -p 127.0.0.1:$PORT:5000 \
   --device /dev/nvidia0 --device /dev/nvidiactl --device /dev/nvidia-uvm --device /dev/nvidia-uvm-tools --device /dev/nvidia-modeset \
@@ -35,7 +36,7 @@ print(json.dumps({"input": inp}))
 PY
 )
 t1=$(date +%s)
-echo "$BODY" | curl -s --max-time 3600 -X POST http://127.0.0.1:$PORT/predictions -H "Content-Type: application/json" -d @- > /tmp/e2e_resp.json
+echo "$BODY" | curl -fsS --max-time 900 -X POST http://127.0.0.1:$PORT/predictions -H "Content-Type: application/json" -d @- > /tmp/e2e_resp.json || exit 1
 echo "predict wall: $(( $(date +%s) - t1 ))s"
 python3 - /tmp/e2e_resp.json "$OUT" <<'PY'
 import base64, json, re, sys

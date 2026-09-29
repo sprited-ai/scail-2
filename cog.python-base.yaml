@@ -21,7 +21,7 @@ build:
     # cog's template installs `cog` into the Ubuntu python (3.12.3, /usr) but our
     # requirements into the uv-managed 3.12.12 that /usr/bin/python3 points at, and
     # its CMD runs bare `python`. Keep everything in the uv interpreter.
-    - uv pip install --python /usr/bin/python3 --break-system-packages -r /ComfyUI/requirements.txt
+    - uv pip install --python /usr/local/bin/python --break-system-packages -r /ComfyUI/requirements.txt
     # Bundle model weights. Separate commands keep each download in its own cached layer.
     - mkdir -p /ComfyUI/models/diffusion_models /ComfyUI/models/text_encoders /ComfyUI/models/vae /ComfyUI/models/clip_vision /ComfyUI/models/loras
     - pget -f https://huggingface.co/Comfy-Org/SCAIL-2/resolve/main/diffusion_models/wan2.1_14B_SCAIL_2_fp8_scaled.safetensors /ComfyUI/models/diffusion_models/wan2.1_14B_SCAIL_2_fp8_scaled.safetensors && test "$(stat -c %s /ComfyUI/models/diffusion_models/wan2.1_14B_SCAIL_2_fp8_scaled.safetensors)" = "17694586857"
@@ -34,11 +34,10 @@ build:
     # BiRefNet (MIT) for automatic single-subject masks — 0.9 GB into the HF cache
     - python3 -c "from huggingface_hub import snapshot_download; snapshot_download('ZhengPeng7/BiRefNet')"
     # cog runtime into the same interpreter, `python` alias for cog's CMD, and a loud check
-    - uv pip install --python /usr/bin/python3 --break-system-packages cog==0.22.0 coglet==0.22.0
-    - ln -sf "$(readlink -f /usr/bin/python3)" /usr/bin/python && python -c "import cog, coglet, torch, av, websocket, transformers, timm, huggingface_hub; print('runtime ok', torch.__version__)"
+    - uv pip install --python /usr/local/bin/python --break-system-packages cog==0.22.0 coglet==0.22.0
+    - python -c "import cog, coglet, torch, av, websocket, transformers, timm, huggingface_hub; print('runtime ok', torch.__version__)"
     # Replicate installs runtime dependencies before setup(). This interpreter is
     # owned by this disposable image; uv's PEP 668 marker blocks that bootstrap.
     - python -c "import pathlib, sysconfig; (pathlib.Path(sysconfig.get_path('stdlib')) / 'EXTERNALLY-MANAGED').unlink(missing_ok=True)"
-    # Match the Cog builder/runtime used by the hosted setup-verified image.
     - python -m pip install cog==0.23.0 coglet==0.23.0
 run: "predict.py:Predictor"

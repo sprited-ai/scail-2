@@ -155,3 +155,62 @@ Packaged by [Sprited](https://spritedx.com).
   archivePrefix={arXiv}
 }
 ```
+# Runtime limits
+
+The predictor worker has a 10-minute setup deadline and a 14-minute prediction
+deadline. The latter covers preprocessing, sampling and output encoding. On a
+deadline it stops its ComfyUI subprocess and exits with code 124. ComfyUI graph
+execution also has a 12-minute budget; connection failures terminate the server.
+
+These limits start inside the worker. They do **not** bound platform scheduling,
+image pulls or anything before Python starts. API callers must send
+`Cancel-After: 15m` when creating a prediction. `tools/replicate_predict.sh` sends
+this header, bounds polling, and requests cancellation on abnormal exit. It does
+not retry prediction creation. Playground requests do not automatically inherit
+the API header.
+
+## Bundled weights
+
+`cog build` downloads all seven SCAIL-2 weights into the image, alongside the
+BiRefNet cache. Startup validates their sizes and fails clearly if any file is
+missing or truncated; it does not download replacement weights. The image is
+approximately 50 GB uncompressed. Replicate still needs to pull the image on a
+cold boot, but model setup no longer depends on Hugging Face downloads.
+
+Replicate updates runtime dependencies before calling `setup()`. The image
+removes the uv-managed interpreter's `EXTERNALLY-MANAGED` marker during build
+so that bootstrap can install its dependencies. This affects only the isolated
+container interpreter, not the build host or a user's Python environment.
+
+The final runtime is pinned to Cog/Coglet 0.23.0, matching the builder used for
+the hosted validation. That image completed setup on an H100 in 9.4 seconds.
+An earlier five-minute test spent 286 seconds before processing and reached
+model loading before its deadline. The smaller-image version below subsequently
+passed hosted E2E with a ten-minute request deadline. Image pull and GPU allocation
+remain possible contributors to startup delay; the available logs do not distinguish them.
+
+### Smaller-image validation
+
+The hosted E2E-validated version `b7d7a4fb451d4e0e6d24b20b126e927a3f0854edb193f2b9513aaa0b0f86079a`
+uses `cog.python-base.yaml`. Reproduce it with Cog 0.23.0:
+
+```sh
+cog build -f cog.python-base.yaml --use-cuda-base-image=false -t scail2-python-base:test
+cog push -f cog.python-base.yaml --use-cuda-base-image=false r8.im/sprited/scail-2
+```
+
+It includes the same weights and is 39.12 GB uncompressed, compared with
+49.60 GB for the CUDA-base variant. On gin it passed the same 33-frame test
+with network disabled and no model mounts: readiness 6.92 seconds, prediction
+40.78 seconds. These are single-run timings, not an isolated performance benchmark.
+
+Hosted request `vaz9pxr1qdrp40d0xwcb8y2dhm` was created at
+2026-09-29T21:35:23Z and aborted at 21:40:23Z under `Cancel-After: 5m`.
+It never entered processing and returned no logs or output. Reducing the image
+size has therefore not yet demonstrated a solution to the hosted startup delay.
+
+A subsequent request, `5v9wzfjybdrne0d0xxdas77gfc`, succeeded on the same version
+with `Cancel-After: 10m`: 378.02 seconds before processing, 29.99 seconds of
+inference, and 408.01 seconds total. Its 896×512, 33-frame MP4 was retrieved and
+an output frame inspected. This verifies the fast single-subject test, not all
+input combinations or consistent cold-start latency. No automatic retry was used.

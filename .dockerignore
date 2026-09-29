@@ -1,4 +1,6 @@
 .git
+.env
+.env.*
 .venv
 .pytest_cache
 __pycache__
@@ -6,4 +8,6 @@ tests
 samples
 docs
 tmp
+output
+local-result.mp4
 *.md
