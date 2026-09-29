@@ -184,14 +184,14 @@ container interpreter, not the build host or a user's Python environment.
 
 The final runtime is pinned to Cog/Coglet 0.23.0, matching the builder used for
 the hosted validation. That image completed setup on an H100 in 9.4 seconds.
-Hosted inference is not yet verified end to end: the latest five-minute test
-spent 286 seconds before processing, then reached model loading before the
-request deadline. Image pull and GPU allocation are possible contributors;
-the available logs do not distinguish them.
+An earlier five-minute test spent 286 seconds before processing and reached
+model loading before its deadline. The smaller-image version below subsequently
+passed hosted E2E with a ten-minute request deadline. Image pull and GPU allocation
+remain possible contributors to startup delay; the available logs do not distinguish them.
 
-### Smaller-image validation (not yet hosted E2E verified)
+### Smaller-image validation
 
-The latest experimental version `b7d7a4fb451d4e0e6d24b20b126e927a3f0854edb193f2b9513aaa0b0f86079a`
+The hosted E2E-validated version `b7d7a4fb451d4e0e6d24b20b126e927a3f0854edb193f2b9513aaa0b0f86079a`
 uses `cog.python-base.yaml`. Reproduce it with Cog 0.23.0:
 
 ```sh
@@ -208,3 +208,9 @@ Hosted request `vaz9pxr1qdrp40d0xwcb8y2dhm` was created at
 2026-09-29T21:35:23Z and aborted at 21:40:23Z under `Cancel-After: 5m`.
 It never entered processing and returned no logs or output. Reducing the image
 size has therefore not yet demonstrated a solution to the hosted startup delay.
+
+A subsequent request, `5v9wzfjybdrne0d0xxdas77gfc`, succeeded on the same version
+with `Cancel-After: 10m`: 378.02 seconds before processing, 29.99 seconds of
+inference, and 408.01 seconds total. Its 896×512, 33-frame MP4 was retrieved and
+an output frame inspected. This verifies the fast single-subject test, not all
+input combinations or consistent cold-start latency. No automatic retry was used.
