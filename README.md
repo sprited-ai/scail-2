@@ -188,3 +188,23 @@ Hosted inference is not yet verified end to end: the latest five-minute test
 spent 286 seconds before processing, then reached model loading before the
 request deadline. Image pull and GPU allocation are possible contributors;
 the available logs do not distinguish them.
+
+### Smaller-image validation (not yet hosted E2E verified)
+
+The latest experimental version `b7d7a4fb451d4e0e6d24b20b126e927a3f0854edb193f2b9513aaa0b0f86079a`
+uses `cog.python-base.yaml`. Reproduce it with Cog 0.23.0:
+
+```sh
+cog build -f cog.python-base.yaml --use-cuda-base-image=false -t scail2-python-base:test
+cog push -f cog.python-base.yaml --use-cuda-base-image=false r8.im/sprited/scail-2
+```
+
+It includes the same weights and is 39.12 GB uncompressed, compared with
+49.60 GB for the CUDA-base variant. On gin it passed the same 33-frame test
+with network disabled and no model mounts: readiness 6.92 seconds, prediction
+40.78 seconds. These are single-run timings, not an isolated performance benchmark.
+
+Hosted request `vaz9pxr1qdrp40d0xwcb8y2dhm` was created at
+2026-09-29T21:35:23Z and aborted at 21:40:23Z under `Cancel-After: 5m`.
+It never entered processing and returned no logs or output. Reducing the image
+size has therefore not yet demonstrated a solution to the hosted startup delay.
