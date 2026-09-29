@@ -168,3 +168,16 @@ image pulls or anything before Python starts. API callers must send
 this header, bounds polling, and requests cancellation on abnormal exit. It does
 not retry prediction creation. Playground requests do not automatically inherit
 the API header.
+
+## Bundled weights
+
+`cog build` downloads all seven SCAIL-2 weights into the image, alongside the
+BiRefNet cache. Startup validates their sizes and fails clearly if any file is
+missing or truncated; it does not download replacement weights. The image is
+approximately 50 GB uncompressed. Replicate still needs to pull the image on a
+cold boot, but model setup no longer depends on Hugging Face downloads.
+
+Replicate updates runtime dependencies before calling `setup()`. The image
+removes the uv-managed interpreter's `EXTERNALLY-MANAGED` marker during build
+so that bootstrap can install its dependencies. This affects only the isolated
+container interpreter, not the build host or a user's Python environment.

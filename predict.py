@@ -34,8 +34,8 @@ WORK = os.environ.get("SCAIL2_WORK", "/tmp/scail2")
 INPUT_DIR, OUTPUT_DIR, TEMP_DIR = f"{WORK}/input", f"{WORK}/output", f"{WORK}/temp"
 
 HF = "https://huggingface.co"
-# path under COMFY_DIR/models -> (url, size in bytes). Baked into the image by
-# cog.yaml; setup() re-downloads anything missing or truncated.
+# path under COMFY_DIR/models -> (build-time download URL, size in bytes).
+# cog.yaml bundles these files; setup() only verifies them.
 WEIGHTS = {
     "diffusion_models/wan2.1_14B_SCAIL_2_fp8_scaled.safetensors":
         (f"{HF}/Comfy-Org/SCAIL-2/resolve/main/diffusion_models/wan2.1_14B_SCAIL_2_fp8_scaled.safetensors", 17694586857),
@@ -60,19 +60,14 @@ EFFECTIVE_TFLOPS = float(os.environ.get("SCAIL2_TFLOPS", 350))
 
 
 def ensure_weights() -> None:
-    for rel, (url, size) in WEIGHTS.items():
+    """Validate image-bundled weights. Runtime startup never downloads models."""
+    for rel, (_, size) in WEIGHTS.items():
         dest = os.path.join(COMFY_DIR, "models", rel)
-        if os.path.exists(dest) and os.path.getsize(dest) == size:
-            continue
-        os.makedirs(os.path.dirname(dest), exist_ok=True)
-        print(f"[weights] fetching {rel} ({size / 1e9:.1f} GB)", flush=True)
-        if shutil.which("pget"):
-            subprocess.check_call(["pget", "-f", url, dest], stdin=subprocess.DEVNULL)
-        else:
-            subprocess.check_call(["curl", "-fsSL", "--retry", "5", "-o", dest, url], stdin=subprocess.DEVNULL)
+        if not os.path.isfile(dest):
+            raise RuntimeError(f"Missing bundled weight: {dest}. Rebuild the Cog image.")
         got = os.path.getsize(dest)
         if got != size:
-            raise RuntimeError(f"{rel}: expected {size} bytes, got {got}")
+            raise RuntimeError(f"{rel}: expected {size} bytes, got {got}. Rebuild the Cog image.")
 
 
 # ----------------------------------------------------------------------------
@@ -162,7 +157,9 @@ class Predictor(BasePredictor):
     def setup(self) -> None:
         with deadline(600, "setup"):
             t0 = time.time()
+            print("[setup] validating bundled weights", flush=True)
             ensure_weights()
+            print("[setup] bundled weights verified; starting ComfyUI", flush=True)
             for d in (INPUT_DIR, OUTPUT_DIR, TEMP_DIR):
                 os.makedirs(d, exist_ok=True)
             extra = tuple(os.environ.get("COMFY_EXTRA_ARGS", "").split())  # e.g. "--cpu" for CPU smoke tests
