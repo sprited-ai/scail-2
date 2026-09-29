@@ -155,3 +155,16 @@ Packaged by [Sprited](https://spritedx.com).
   archivePrefix={arXiv}
 }
 ```
+# Runtime limits
+
+The predictor worker has a 10-minute setup deadline and a 14-minute prediction
+deadline. The latter covers preprocessing, sampling and output encoding. On a
+deadline it stops its ComfyUI subprocess and exits with code 124. ComfyUI graph
+execution also has a 12-minute budget; connection failures terminate the server.
+
+These limits start inside the worker. They do **not** bound platform scheduling,
+image pulls or anything before Python starts. API callers must send
+`Cancel-After: 15m` when creating a prediction. `tools/replicate_predict.sh` sends
+this header, bounds polling, and requests cancellation on abnormal exit. It does
+not retry prediction creation. Playground requests do not automatically inherit
+the API header.

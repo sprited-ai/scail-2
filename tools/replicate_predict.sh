@@ -30,18 +30,23 @@ PY
 VERSION=${VERSION:-$(curl -sS --max-time 60 "$API/models/$MODEL" -H "$AUTH" | python3 -c 'import sys,json; print(json.load(sys.stdin)["latest_version"]["id"])')}
 echo "version: $VERSION"
 BODY=$(echo "$BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); d['version']='$VERSION'; print(json.dumps(d))")
-PRED=$(curl -sS --max-time 120 -X POST "$API/predictions" -H "$AUTH" -H "Content-Type: application/json" -d "$BODY")
+PRED=$(curl -fsS --max-time 120 -X POST "$API/predictions" -H "$AUTH" -H "Cancel-After: 15m" -H "Content-Type: application/json" -d "$BODY")
 ID=$(echo "$PRED" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("id") or sys.exit("create failed: "+json.dumps(d)))')
 echo "prediction: https://replicate.com/p/$ID"
+cancel() { curl -fsS --max-time 30 -X POST "$API/predictions/$ID/cancel" -H "$AUTH" >/dev/null || true; }
+trap cancel EXIT
+DEADLINE=$((SECONDS + 900))
 
 while :; do
   P=$(curl -sS --max-time 60 "$API/predictions/$ID" -H "$AUTH" || echo "{\"status\":\"unknown\"}")
   STATUS=$(echo "$P" | python3 -c 'import sys,json; print(json.load(sys.stdin)["status"])')
   case "$STATUS" in
-    succeeded|failed|canceled) break ;;
+    succeeded|failed|canceled|aborted) break ;;
   esac
+  if (( SECONDS >= DEADLINE )); then echo "15-minute deadline exceeded" >&2; exit 1; fi
   sleep 10
 done
+trap - EXIT
 echo "$P" | python3 -c '
 import sys, json
 d = json.load(sys.stdin)
