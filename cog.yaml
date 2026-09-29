@@ -39,4 +39,6 @@ build:
     # Replicate installs runtime dependencies before setup(). This interpreter is
     # owned by this disposable image; uv's PEP 668 marker blocks that bootstrap.
     - python -c "import pathlib, sysconfig; (pathlib.Path(sysconfig.get_path('stdlib')) / 'EXTERNALLY-MANAGED').unlink(missing_ok=True)"
+    # Match the Cog builder/runtime used by the hosted setup-verified image.
+    - python -m pip install cog==0.23.0 coglet==0.23.0
 run: "predict.py:Predictor"

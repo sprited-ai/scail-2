@@ -181,3 +181,10 @@ Replicate updates runtime dependencies before calling `setup()`. The image
 removes the uv-managed interpreter's `EXTERNALLY-MANAGED` marker during build
 so that bootstrap can install its dependencies. This affects only the isolated
 container interpreter, not the build host or a user's Python environment.
+
+The final runtime is pinned to Cog/Coglet 0.23.0, matching the builder used for
+the hosted validation. That image completed setup on an H100 in 9.4 seconds.
+Hosted inference is not yet verified end to end: the latest five-minute test
+spent 286 seconds before processing, then reached model loading before the
+request deadline. Image pull and GPU allocation are possible contributors;
+the available logs do not distinguish them.
