@@ -41,16 +41,32 @@ def parse(argv=None):
     ap.add_argument("--dpo_lora", type=float, default=0); ap.add_argument("--relight_lora", type=float, default=0)
     ap.add_argument("--pose_strength", type=float, default=1.0); ap.add_argument("--seed", type=int)
     ap.add_argument("--return_masks", type=lambda s: s.lower() != "false", default=False)
+    ap.add_argument("--prepared_inputs", type=lambda s: s.lower() != "false", nargs="?", const=True, default=False)
+    ap.add_argument("--additional_images", nargs="+", default=[])
+    ap.add_argument("--additional_image_masks", nargs="+", default=[])
+    ap.add_argument("--previous_frames")
+    ap.add_argument("--previous_frame_count", type=int, default=5)
+    ap.add_argument("--model_precision", choices=["fp8", "fp16"], default="fp8")
+    ap.add_argument("--vae_precision", choices=["default", "bf16"], default="default")
+    ap.add_argument("--sampler_name", default="preset")
+    ap.add_argument("--scheduler", default="simple")
+    ap.add_argument("--lightx2v_lora", type=float, default=-1)
+    ap.add_argument("--pose_start", type=float, default=0)
+    ap.add_argument("--pose_end", type=float, default=1)
+    ap.add_argument("--denoise", type=float, default=1)
+    ap.add_argument("--return_frames", type=lambda s: s.lower() != "false", nargs="?", const=True, default=False)
     ap.add_argument("--out", required=True); ap.add_argument("--serve", action="store_true")
     return ap.parse_args(argv)
 
 
 def run_job(pred, a):
-    kw = {k: (predict.Path(v) if k in ("image", "video", "image_mask", "video_mask") and v else v)
+    kw = {k: (predict.Path(v) if k in ("image", "video", "image_mask", "video_mask", "previous_frames") and v else v)
           for k, v in vars(a).items() if k not in ("out", "serve")}
     out = pred.predict(**kw)
     shutil.copy(out.video, a.out)
     print(json.dumps({"out": a.out, "seed": out.seed,
+                      "frames": str(out.frames) if out.frames else None,
+                      "metadata": str(out.metadata) if out.metadata else None,
                       "reference_mask": str(out.reference_mask) if out.reference_mask else None,
                       "driving_mask": str(out.driving_mask) if out.driving_mask else None}), flush=True)
 
@@ -70,7 +86,8 @@ if __name__ == "__main__":
                 job = json.loads(line)
                 argv = []
                 for k, v in job.items():
-                    argv += [f"--{k}", str(v)]
+                    if v is not None:
+                        argv += [f"--{k}", *([str(x) for x in v] if isinstance(v, list) else [str(v)])]
                 try:
                     run_job(pred, parse(argv))
                 except Exception as e:  # keep serving

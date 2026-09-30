@@ -6,7 +6,7 @@
 > weights MIT) and its official ComfyUI implementation for
 > [Replicate](https://replicate.com); **we earn nothing** — compute fees go to
 > Replicate. Authors who want this changed or taken down:
-> [open an issue](https://github.com/sprited-ai/scail-2/issues) and we comply
+> [open an issue](https://github.com/sprited-ai/scail-2-on-replicate/issues) and we comply
 > immediately.
 
 **[SCAIL-2](https://arxiv.org/abs/2606.10804) on [Replicate](https://replicate.com):
@@ -36,8 +36,9 @@ What this endpoint gives you:
   frames per call, generated in overlapping windows exactly like the official
   ComfyUI "extend" workflow.
 - **Same numbers as ComfyUI** — this runs ComfyUI's own `WanSCAILToVideo`
-  node (v0.33.1, pinned) on the Comfy-Org fp8 repack, so a local ComfyUI
-  workflow with the same inputs, seed and settings reproduces the result.
+  node (v0.33.1, pinned), with the Comfy-Org FP8 scaled checkpoint.
+  Matching settings preserves the workflow contract; bit-identical results
+  across GPU types and ComfyUI versions are not guaranteed.
 
 ## Inputs
 
@@ -60,9 +61,10 @@ What this endpoint gives you:
 | `relight_lora` | `0` | strength of the official relighting LoRA (replacement mode) |
 | `pose_strength` | `1.0` | weight of the motion conditioning |
 | `seed` | random | |
-| `return_masks` | `false` | also return the reference mask (PNG) and driving mask (MP4) that were used |
+| `return_masks` | `false` | also return the reference mask (PNG) and driving mask (lossless FFV1 MKV) that were used |
 
-Output: `video` (H.264 MP4 at the driving frame rate), `seed`, and optionally
+Output: `video` (H.264 MP4 preview), `seed`, and `metadata` (effective settings
+and frame timing). `return_frames` adds a lossless PNG ZIP; `return_masks` adds
 `reference_mask` / `driving_mask`.
 
 ### Masks
@@ -86,10 +88,10 @@ binding and multi-character scenes.
 
 ### Runtime
 
-Replicate stops predictions at 30 minutes, so requests whose estimated sampling
-time exceeds ~26 minutes are refused up front with a suggestion (fewer frames,
-smaller resolution, or `fast`). Measured on an RTX PRO 6000 (H100 is expected to
-be similar or faster):
+The worker limits prediction to 14 minutes and sampling to 12 minutes.
+Requests whose estimated sampling time exceeds that budget are refused before
+sampling. Platform startup needs a separate API deadline (see Runtime limits).
+Historical measurements on an RTX PRO 6000, before the shorter deadline:
 
 | preset | frames × size | sampling |
 |---|---|---|
@@ -127,7 +129,7 @@ multi-person masking (see roadmap).
 
 - SAM3 text-prompted masks (`subject_type`-style multi-identity tracking) — needs a license review of the SAM 3 weights.
 - Skeleton `pose` driving via SCAIL-Pose.
-- Multi-reference (extra views / background references) — the node supports it.
+- Additional automatic masking backends; explicit multi-reference palette masks are supported now.
 
 ## Deploy
 
@@ -171,10 +173,10 @@ the API header.
 
 ## Bundled weights
 
-`cog build` downloads all seven SCAIL-2 weights into the image, alongside the
+`cog build` downloads all eight inference weight files into the image, alongside the
 BiRefNet cache. Startup validates their sizes and fails clearly if any file is
-missing or truncated; it does not download replacement weights. The image is
-approximately 50 GB uncompressed. Replicate still needs to pull the image on a
+missing or truncated; it does not download replacement weights. The optional BF16 VAE adds 253.8 MB to the previous image sizes
+reported below. The FP16 SCAIL checkpoint is not bundled. Replicate still needs to pull the image on a
 cold boot, but model setup no longer depends on Hugging Face downloads.
 
 Replicate updates runtime dependencies before calling `setup()`. The image
@@ -199,7 +201,8 @@ cog build -f cog.python-base.yaml --use-cuda-base-image=false -t scail2-python-b
 cog push -f cog.python-base.yaml --use-cuda-base-image=false r8.im/sprited/scail-2
 ```
 
-It includes the same weights and is 39.12 GB uncompressed, compared with
+The previously deployed FP8-only version includes seven weight files and is
+39.12 GB uncompressed, compared with
 49.60 GB for the CUDA-base variant. On gin it passed the same 33-frame test
 with network disabled and no model mounts: readiness 6.92 seconds, prediction
 40.78 seconds. These are single-run timings, not an isolated performance benchmark.
@@ -214,3 +217,90 @@ with `Cancel-After: 10m`: 378.02 seconds before processing, 29.99 seconds of
 inference, and 408.01 seconds total. Its 896×512, 33-frame MP4 was retrieved and
 an output frame inspected. This verifies the fast single-subject test, not all
 input combinations or consistent cold-start latency. No automatic retry was used.
+
+## Sprute local / remote boundary
+
+Sprute prepares the RGB 3×3 reference and driving grids plus both SCAIL palette
+masks locally. This API only performs SCAIL inference; Sprute then splits the
+returned frames, runs Toonout, and writes the transparent animation locally.
+
+For the current `sprute-animate-character.api.json` sampling configuration:
+
+```python
+input = {
+    "image": reference_grid_png,
+    "video": driving_grid_mkv,
+    "image_mask": reference_palette_png,
+    "video_mask": driving_palette_mkv,
+    "prepared_inputs": True,
+    "preset": "sprute",             # UniPC, simple, 8 steps, CFG 1, shift 5
+    "vae_precision": "bf16",
+    "dpo_lora": 1.0,
+    "lightx2v_lora": 0.8,             # applied after DPO, matching Sprute
+    "mode": "animation",
+    "seed": 42,
+    "return_frames": True,
+}
+```
+
+Prepared mode preserves the incoming canvas size (e.g. 576×768). Composite the
+reference and driver over #808080 locally. Provide opaque RGB inputs; transparent
+inputs are rejected in this mode. Masks must be exact 0/255 RGB palette colors,
+not lossy H.264 masks. Driving masks must have matching size, frame count and FPS.
+Automatic masks are disabled in prepared mode. Omitted explicit masks remain
+absent from the graph. The existing 4n+1 frame rule and 161-frame cap still apply.
+Use one request per motion. For exact timing, use FFV1 MKV; animated lossless WebP
+is also accepted when frame durations are constant (within 1 ms rounding).
+
+| Control | API input |
+|---|---|
+| Checkpoint / VAE | Bundled FP8 scaled checkpoint; `vae_precision` |
+| Sampler / schedule | `sampler_name` (`preset`, `euler`, `uni_pc`), `scheduler` |
+| Steps / CFG / shift | `steps`, `guidance_scale`, `shift` (0 inherits preset) |
+| Distillation / DPO / relighting | `lightx2v_lora` (-1 inherits preset; 0 off), `dpo_lora`, `relight_lora` |
+| Conditioning | `pose_strength`, `pose_start`, `pose_end`, `mode` |
+| Denoising / reproducibility | `denoise`, `seed` |
+| Dimensions / duration | `width`, `height`, `num_frames`, `fps` |
+| Prepared masks | `image_mask`, `video_mask`, `prepared_inputs` |
+| Text conditioning | `prompt`, `negative_prompt` |
+
+`output.frames` is a ZIP of the original decoded PNGs, named `000000.png`,
+`000001.png`, etc. Feed these to local Toonout rather than decoding the lossy MP4
+preview. `output.metadata` records the effective FPS, dimensions, frame count,
+seed, checkpoint and sampling settings. `return_masks` now returns the driving
+mask as lossless FFV1 MKV to preserve palette colors.
+
+The BF16 VAE is bundled during build alongside the default VAE.
+The diffusion checkpoint is fixed to FP8 scaled. The previously deployed `b7d7a4fb`
+version does **not** expose these new controls. Automatic continuation defaults
+to five-frame overlap (`previous_frame_count`).
+This API is not an arbitrary Comfy graph executor or a custom-LoRA loader.
+
+### Additional views and continuation
+
+`additional_images` accepts up to seven extra views, paired with
+`additional_image_masks`. Also supply the primary `image_mask`. Each mask uses
+the same identity colors as the primary view; their order must match the images.
+The primary image supplies CLIP vision features, while all views supply VAE
+reference conditioning.
+
+`previous_frames` accepts a single image or a lossless video. The last
+`previous_frame_count` frames anchor the beginning of the new request. Use count
+1 for an image; otherwise the count must be 4n+1, up to 77 (trained default 5).
+The driving clip must start at the overlapping interval, and the output includes
+that interval. Drop it locally when appending to an earlier result. The count
+also controls overlap between internally generated windows. Inputs shorter than
+the requested anchor count are rejected rather than silently misaligned.
+
+One prediction generates one sample. Use separate seeded requests for batches;
+SAM3 tracking, skeleton extraction, custom LoRA downloads, sprite cutting and
+background removal remain outside this GPU inference API.
+
+### Current Sprute-compatible version
+
+Pin `54cec44a0b05a60cde948cfa45ec4c61e0efd447ba85204796d40b8fa2112385`
+for the controls documented above. Hosted prediction
+`f4w7zg92knrny0d0xz0vt47npm` succeeded with prepared 576x768, 81-frame input
+and returned 81 lossless PNGs. Inference took 74.89 seconds; total including
+cold start was 540.42 seconds. See the validation document for settings and
+limits of this test.

@@ -19,7 +19,7 @@ curl -sS -X POST https://api.replicate.com/v1/models \
   "visibility": "public",
   "hardware": "$HARDWARE",
   "description": "SCAIL-2 end-to-end character animation (zai-org): animate a character image with any driving video, no skeleton extraction. Animation + replacement modes, own or automatic masks, official DPO/relight LoRAs, quality and fast presets. Apache-2.0 / MIT.",
-  "github_url": "https://github.com/sprited-ai/scail-2",
+  "github_url": "https://github.com/sprited-ai/scail-2-on-replicate",
   "paper_url": "https://arxiv.org/abs/2606.10804",
   "license_url": "https://huggingface.co/zai-org/SCAIL-2"
 }
