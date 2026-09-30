@@ -6,7 +6,7 @@
 > weights MIT) and its official ComfyUI implementation for
 > [Replicate](https://replicate.com); **we earn nothing** — compute fees go to
 > Replicate. Authors who want this changed or taken down:
-> [open an issue](https://github.com/sprited-ai/scail-2/issues) and we comply
+> [open an issue](https://github.com/sprited-ai/scail-2-on-replicate/issues) and we comply
 > immediately.
 
 **[SCAIL-2](https://arxiv.org/abs/2606.10804) on [Replicate](https://replicate.com):
