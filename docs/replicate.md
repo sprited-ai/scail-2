@@ -4,6 +4,10 @@ Animate a character image using the motion from a driving video, or replace a ch
 
 This is an unofficial community deployment of [SCAIL-2 by Zhipu AI](https://github.com/zai-org/SCAIL-2).
 
+## Examples
+
+[View the examples](https://replicate.com/sprited/scail-2/examples), including a clay gardener and a robot. Examples use MP4 output without a PNG frame archive.
+
 ## Start here
 
 1. Upload a reference character image and a driving video.
