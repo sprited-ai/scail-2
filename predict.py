@@ -205,18 +205,18 @@ class Predictor(BasePredictor):
     def predict(
         self,
         image: Path = Input(description="Reference character image. Transparent PNGs are composited on white and their alpha becomes the reference mask."),
-        video: Path = Input(description="Driving video (mp4/mov/webm/mkv or constant-rate animated WebP). Its motion is transferred to the character; its aspect ratio sets the output size unless width/height are given."),
+        video: Path = Input(description="Driving video or animated WebP. Its motion is transferred to the character. WebP transparency is used as the driving mask unless video_mask is supplied."),
         prompt: str = Input(default="", description="Describe the character and the motion, e.g. 'A cartoon robot walking in place, side view'. Describes the final video; not instructions."),
         negative_prompt: str = Input(default="", description="What to avoid, e.g. 'distorted limbs, camera movement, blurry'. Only matters with guidance_scale > 1 (the quality preset). Wan's stock Chinese negative prompt is deliberately not applied: its 'painting / artwork / style' terms push stylized characters toward a 3D-CG look."),
         mode: str = Input(default="animation", choices=["animation", "replacement"],
                           description="animation: the reference character (and its background) performs the driving motion. replacement: the character is placed into the driving video, keeping its background and lighting."),
         image_mask: Optional[Path] = Input(default=None, description="Optional mask for the reference: a grayscale/black-and-white matte (white = character) or a SCAIL-2 palette mask (blue = identity 0). If omitted and auto_mask is on, one is derived from the image's alpha channel or BiRefNet."),
-        video_mask: Optional[Path] = Input(default=None, description="Optional per-frame mask video for the driving video, same conventions as image_mask (grayscale matte or SCAIL-2 colours). If omitted and auto_mask is on, BiRefNet masks every frame."),
-        auto_mask: bool = Input(default=True, description="Derive missing masks automatically (alpha channel or BiRefNet single-subject matting). Off = run without masks."),
+        video_mask: Optional[Path] = Input(default=None, description="Optional per-frame mask video for the driving video, same conventions as image_mask (grayscale matte or SCAIL-2 colours). If omitted, animated WebP transparency is used when available; otherwise auto_mask uses BiRefNet."),
+        auto_mask: bool = Input(default=True, description="Derive missing masks automatically (alpha channel or BiRefNet single-subject matting). Off disables automatic matting; supplied masks and driving WebP transparency still apply."),
         resolution: str = Input(default="512p", choices=["512p", "704p"], description="Short side of the output; the driving video's aspect ratio is kept (e.g. 896x512 for 16:9, 512x512 for square). SCAIL-2 was trained at both."),
         width: int = Input(default=0, ge=0, le=1536, description="Explicit output width (multiple of 32). Set together with height to override resolution; the driving video is centre-cropped to this aspect."),
         height: int = Input(default=0, ge=0, le=1536, description="Explicit output height (multiple of 32)."),
-        num_frames: int = Input(default=0, ge=0, le=pp.MAX_FRAMES, description=f"Frames to generate (rounded down to 4k+1). 0 = every frame of the driving video, up to {pp.MAX_FRAMES}. Beyond 81 frames the video is generated in overlapping windows."),
+        num_frames: int = Input(default=0, ge=0, le=pp.MAX_FRAMES, description=f"Maximum output frames, taken from the start of the driving video after applying fps. 0 uses the available video, up to {pp.MAX_FRAMES} frames. 81 frames at 24 fps is about 3.4 seconds. Does not extend a shorter video. Counts are trimmed to a supported length (5, 9, 13, ...)."),
         fps: int = Input(default=0, ge=0, le=60, description="Resample the driving video to this frame rate before animating (frames are held, never interpolated); the output uses the same rate. 0 = keep the driving video's rate."),
         preset: str = Input(default="fast", choices=["fast", "quality", "sprute"],
                             description="fast (default): the official ComfyUI recipe — lightx2v step/CFG-distill LoRA, Euler, 6 steps, CFG 1, shift 5; sprute: UniPC, 8 steps, CFG 1, shift 5, DPO before LightX2V. Model/VAE precision are selected separately. quality: the paper's sampler (UniPC, 40 steps, CFG 5, shift 3) — 81 frames at 512p takes ~10 min on an H100."),
@@ -283,7 +283,13 @@ class Predictor(BasePredictor):
             plan = pp.plan_chunks(n, overlap=previous_frame_count)
             print(f"[input] driver {sw}x{sh}@{src_fps:.3f}fps x{n_src} -> {W}x{H}@{out_fps:.3f}fps x{n} "
                   f"(windows: {len(plan.starts)} x {plan.length})", flush=True)
-            frames = decode_selected(str(video), sel, lambda im: pp.prepared_rgb(im, W, H) if prepared_inputs else np.asarray(pp.cover(im.convert("RGB"), W, H)))
+            decoded = decode_selected(str(video), sel, lambda im: (pp.prepared_rgb(im, W, H), None) if prepared_inputs else pp.driving_frame(im, W, H))
+            frames = [rgb for rgb, _ in decoded]
+            embedded_alpha = None
+            if not prepared_inputs and is_webp(str(video)) and video_mask is None:
+                if any(alpha is not None and np.any(alpha < 255) for _, alpha in decoded):
+                    embedded_alpha = [pp.colorize(alpha >= 128 if alpha is not None else np.ones((H, W), dtype=bool), drive_bg) for _, alpha in decoded]
+            del decoded
 
             # ---- driving mask ---------------------------------------------------
             drive_mask: list[np.ndarray] | None = None
@@ -293,6 +299,9 @@ class Predictor(BasePredictor):
                     raise ValueError("Prepared video_mask must match driving dimensions, frame count and FPS")
                 m_sel = pp.map_indices(sel, n_src, m_n)
                 drive_mask = decode_selected(str(video_mask), m_sel, lambda im: pp.prepared_rgb(im, W, H, palette=True) if prepared_inputs else pp.mask_from_image(im, drive_bg, W, H, "cover"))
+            elif embedded_alpha is not None:
+                drive_mask = embedded_alpha
+                print("[mask] driving mask from WebP transparency", flush=True)
             elif auto_mask:
                 t = time.time()
                 drive_mask = [pp.colorize(m, drive_bg) for m in self.matter.masks(frames)]

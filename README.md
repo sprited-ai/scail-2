@@ -22,7 +22,7 @@ What this endpoint gives you:
   motion) and `replacement` (your character is dropped into the driving video,
   keeping its scene and lighting).
 - **Masks in, masks out** — bring your own reference / per-frame driving masks
-  (grayscale mattes or SCAIL-2 palette colours), or let `auto_mask` derive them
+  (grayscale mattes or SCAIL-2 palette colours), or use embedded animated-WebP transparency for driving masks. Otherwise let `auto_mask` derive them
   from the image's alpha channel or [BiRefNet](https://github.com/ZhengPeng7/BiRefNet).
   `return_masks` hands them back so you can iterate.
 - **Fast or quality** — the default is the official ComfyUI recipe (lightx2v
@@ -53,7 +53,7 @@ What this endpoint gives you:
 | `auto_mask` | `true` | derive missing masks (alpha channel → BiRefNet). Off = no masks |
 | `resolution` | `512p` | short side 512 or 704; aspect follows the driving video (16:9 → 896x512, square → 512x512) |
 | `width` / `height` | `0` | explicit size (multiples of 32) — centre-crops the driving video to that aspect |
-| `num_frames` | `0` | 0 = all driving frames (max 161); rounded to 4k+1 |
+| `num_frames` | `0` | Maximum frames from the start, after FPS conversion. 0 = available video up to 161 frames. 81 at 24 fps is about 3.4 seconds. Does not extend shorter inputs; trimmed to 5, 9, 13, ... frames. |
 | `fps` | `0` | resample the driving video to this rate first (nearest frame, no interpolation); 0 = source rate |
 | `preset` | `fast` | `fast` = lightx2v LoRA 0.8, Euler 6 steps / CFG 1 / shift 5 (official ComfyUI recipe); `quality` = UniPC 40 steps / CFG 5 / shift 3 (paper) |
 | `steps`, `guidance_scale`, `shift` | `0` | override the preset (0 = preset default) |

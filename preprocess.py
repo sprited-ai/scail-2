@@ -270,3 +270,12 @@ def archive_frames(paths, destination):
     with zipfile.ZipFile(destination, "w", compression=zipfile.ZIP_STORED) as archive:
         for index, path in enumerate(paths):
             archive.write(path, f"{index:06d}.png")
+
+
+def driving_frame(img: Image.Image, w: int, h: int) -> tuple[np.ndarray, np.ndarray | None]:
+    """Apply the same cover geometry to video RGB and optional embedded alpha."""
+    rgb, alpha = flatten_alpha(img, BLACK)
+    rgb = np.asarray(cover(rgb, w, h))
+    if alpha is not None:
+        alpha = np.asarray(cover(Image.fromarray(alpha), w, h, Image.BILINEAR))
+    return rgb, alpha
