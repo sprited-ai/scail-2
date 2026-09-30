@@ -1,0 +1,44 @@
+# Sprute inference controls validation
+
+Validated on gin on 2026-09-30 UTC. The GPU was shared with unrelated processes;
+these timings are not isolated performance or FP8/FP16 comparisons.
+
+## Requirements and evidence
+
+- Current Sprute graph: `sprute/workflows/sprute-animate-character.api.json`.
+  FP16 SCAIL-2, BF16 VAE, DPO 1 then LightX2V 0.8, UniPC/simple, 8 steps,
+  CFG 1, shift 5, denoise 1, pose strength/start/end 1/0/1.
+- Prepared RGB grids retain their exact pixels and dimensions. Palette masks
+  survive a real FFV1 encode/decode. Tests exercise the predictor request path.
+- PNG ZIP outputs retain original PNG bytes and frame order. Metadata records
+  effective configuration and timing. MP4 remains a preview.
+- Multi-reference images/masks and previous-frame anchors reach the official
+  conditioning node. Adjustable overlap is consistent across window offsets,
+  node anchor counts and output concatenation.
+- `python -m pytest -q`: 35 tests passed.
+
+## Container HTTP tests
+
+Image: `scail2-controls:test`, approximately 72.2 GB uncompressed. Rebuilt with
+Cog 0.23.0 and `cog.python-base.yaml --use-cuda-base-image=false`, including the
+regenerated API schema and all model weights. No network or model mounts.
+Fixture assets were mounted read-only. `COMFY_EXTRA_ARGS=--lowvram` was used
+because this was a shared GPU. Each harness had a 580-second outer deadline
+and stopped its container in `finally`.
+
+1. Prepared 576x768 eight-direction grid, 5 driver frames at 24 FPS, seed 42,
+   Sprute preset, FP16 model/BF16 VAE, both explicit masks, PNG frame output.
+   Ready: 6.77 s. Prediction: 40.04 s. Succeeded; all five PNGs, metadata and
+   preview retrieved. Output frame inspected.
+2. Same settings plus an additional reference/mask and a single-image anchor
+   (`previous_frame_count=1`). Ready: 6.79 s. Prediction: 47.74 s. Succeeded;
+   metadata confirms both controls, five PNGs returned and output inspected.
+
+Remote evidence: `/mnt/stash/scail2-controls/` (`response.json`, `container.log`,
+`result.zip`, `result.json`) and `extended/`. Local inspected samples:
+`output/sprute-controls/frame.png` and `extended.png` (not committed).
+
+These short tests verify execution and transport. They do not establish
+full-length animation quality, same-seed equality across hardware, multi-view
+quality improvement, or hosted execution of this new version. The older public
+FP8 version's hosted success is documented in README.

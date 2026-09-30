@@ -99,12 +99,13 @@ class ChunkPlan:
     length: int        # frames per window (4k+1, <= CHUNK); every window is the same length
     starts: list[int]  # first output frame of each window
     total: int         # frames the windows cover together (>= requested); pad the driver to this
+    overlap: int = OVERLAP
 
     @property
     def offsets(self) -> list[int]:
         """`video_frame_offset` to pass to WanSCAILToVideo per window: the node
         subtracts the OVERLAP anchor frames itself for every window after the first."""
-        return [0] + [s + OVERLAP for s in self.starts[1:]]
+        return [0] + [s + self.overlap for s in self.starts[1:]]
 
 
 def plan_chunks(n_frames: int, chunk: int = CHUNK, overlap: int = OVERLAP) -> ChunkPlan:
@@ -113,8 +114,10 @@ def plan_chunks(n_frames: int, chunk: int = CHUNK, overlap: int = OVERLAP) -> Ch
     frames, so k windows of length L cover k*L - (k-1)*overlap frames. Equal
     lengths keep every window well inside the trained range instead of
     leaving a tiny tail window."""
+    if overlap < 1 or overlap >= chunk or (overlap - 1) % 4:
+        raise ValueError("previous_frame_count must be 4n+1 and smaller than the chunk size")
     if n_frames <= chunk:
-        return ChunkPlan(n_frames, [0], n_frames)
+        return ChunkPlan(n_frames, [0], n_frames, overlap)
     k = 2
     while True:
         length = round_frames_up(math.ceil((n_frames + (k - 1) * overlap) / k))
@@ -122,7 +125,7 @@ def plan_chunks(n_frames: int, chunk: int = CHUNK, overlap: int = OVERLAP) -> Ch
             break
         k += 1
     starts = [i * (length - overlap) for i in range(k)]
-    return ChunkPlan(length, starts, starts[-1] + length)
+    return ChunkPlan(length, starts, starts[-1] + length, overlap)
 
 
 def assemble(chunks: list[np.ndarray], n_frames: int, overlap: int = OVERLAP) -> np.ndarray:
@@ -246,3 +249,24 @@ def estimate_seconds(width: int, height: int, plan: ChunkPlan, steps: int, cfg: 
     flops = 2 * WAN_PARAMS * tokens + 4 * tokens ** 2 * WAN_HIDDEN * WAN_LAYERS
     passes = steps * (2 if cfg > 1 else 1) * len(plan.starts)
     return passes * flops / (effective_tflops * 1e12)
+
+
+def prepared_rgb(image: Image.Image, width: int, height: int, *, palette=False) -> np.ndarray:
+    """Validate an already-composited local tensor without silently transforming it."""
+    if image.size != (width, height):
+        raise ValueError("Prepared image/mask must already match output dimensions")
+    rgba = np.asarray(image.convert("RGBA"))
+    if np.any(rgba[..., 3] != 255):
+        raise ValueError("Prepared inputs must be opaque; composite the background locally")
+    rgb = rgba[..., :3].copy()
+    if palette and np.any((rgb != 0) & (rgb != 255)):
+        raise ValueError("Prepared masks must use exact SCAIL palette colors; use lossless encoding")
+    return rgb
+
+
+def archive_frames(paths, destination):
+    """Preserve decoded pixels and stable, zero-based frame ordering for local processing."""
+    import zipfile
+    with zipfile.ZipFile(destination, "w", compression=zipfile.ZIP_STORED) as archive:
+        for index, path in enumerate(paths):
+            archive.write(path, f"{index:06d}.png")

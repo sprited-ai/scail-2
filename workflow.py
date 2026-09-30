@@ -13,6 +13,8 @@ from preprocess import OVERLAP, ChunkPlan
 UNET = "wan2.1_14B_SCAIL_2_fp8_scaled.safetensors"
 TEXT_ENCODER = "umt5_xxl_fp8_e4m3fn_scaled.safetensors"
 VAE = "wan_2.1_vae.safetensors"
+UNET_FP16 = "wan2.1_14B_SCAIL_2_fp16.safetensors"
+VAE_BF16 = "Wan2_1_VAE_bf16.safetensors"
 CLIP_VISION = "clip_vision_h.safetensors"
 LORA_LIGHTX2V = "lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors"
 LORA_DPO = "wan2.1_SCAIL_2_DPO_lora_bf16.safetensors"
@@ -22,6 +24,7 @@ LORA_RELIGHT = "wan2.1_SCAIL_2_relight_lora_bf16.safetensors"
 # steps, cfg 5, shift 3). "fast" = the official ComfyUI template: lightx2v
 # step/cfg-distill LoRA at 0.8, euler, 6 steps, cfg 1, shift 5.
 PRESETS = {
+    "sprute": dict(steps=8, cfg=1.0, shift=5.0, sampler="uni_pc", scheduler="simple", loras=[(LORA_LIGHTX2V, 0.8)]),
     "quality": dict(steps=40, cfg=5.0, shift=3.0, sampler="uni_pc", scheduler="simple", loras=[]),
     "fast": dict(steps=6, cfg=1.0, shift=5.0, sampler="euler", scheduler="simple", loras=[(LORA_LIGHTX2V, 0.8)]),
 }
@@ -43,11 +46,18 @@ class GraphParams:
     sampler: str
     scheduler: str
     output_prefix: str             # SaveImage filename_prefix (may contain a subfolder)
+    unet: str = UNET
+    vae: str = VAE
+    pose_start: float = 0.0
+    pose_end: float = 1.0
+    denoise: float = 1.0
     ref_mask: str | None = None
     drive_mask: str | None = None
     replacement: bool = False
     pose_strength: float = 1.0
     loras: list[tuple[str, float]] = field(default_factory=list)
+    additional_refs: list[tuple[str, str]] = field(default_factory=list)
+    previous_frames: str | None = None
 
 
 def build_graph(p: GraphParams) -> dict:
@@ -57,18 +67,23 @@ def build_graph(p: GraphParams) -> dict:
         g[nid] = {"class_type": class_type, "inputs": inputs}
         return [nid, 0]
 
-    model = node("unet", "UNETLoader", unet_name=UNET, weight_dtype="default")
+    model = node("unet", "UNETLoader", unet_name=p.unet, weight_dtype="default")
     for i, (name, strength) in enumerate(p.loras):
         model = node(f"lora{i}", "LoraLoaderModelOnly", model=model, lora_name=name, strength_model=strength)
     model = node("shift", "ModelSamplingSD3", model=model, shift=p.shift)
 
     clip = node("clip", "CLIPLoader", clip_name=TEXT_ENCODER, type="wan")
-    vae = node("vae", "VAELoader", vae_name=VAE)
+    vae = node("vae", "VAELoader", vae_name=p.vae)
     clip_vision = node("clip_vision", "CLIPVisionLoader", clip_name=CLIP_VISION)
 
     ref = node("ref", "LoadImage", image=p.ref_image)
     cv_out = node("clip_vision_encode", "CLIPVisionEncode", clip_vision=clip_vision, image=ref, crop="none")
     ref_mask = node("ref_mask", "LoadImage", image=p.ref_mask) if p.ref_mask else None
+    for i, (image_name, mask_name) in enumerate(p.additional_refs):
+        extra = node(f"extra_ref{i}", "LoadImage", image=image_name)
+        extra_mask = node(f"extra_mask{i}", "LoadImage", image=mask_name)
+        ref = node(f"ref_batch{i}", "ImageBatch", image1=ref, image2=extra)
+        ref_mask = node(f"mask_batch{i}", "ImageBatch", image1=ref_mask, image2=extra_mask)
 
     drive = node("drive", "LoadVideo", file=p.drive_video)
     drive_frames = node("drive_frames", "GetVideoComponents", video=drive)
@@ -81,13 +96,16 @@ def build_graph(p: GraphParams) -> dict:
     negative = node("negative", "CLIPTextEncode", clip=clip, text=p.negative_prompt)
 
     previous = None
+    if p.previous_frames:
+        anchor = node("previous_video", "LoadVideo", file=p.previous_frames)
+        previous = node("previous_images", "GetVideoComponents", video=anchor)
     acc = None
     for i, offset in enumerate(p.plan.offsets):
         cond = dict(
             positive=positive, negative=negative, vae=vae,
             width=p.width, height=p.height, length=p.plan.length, batch_size=1,
-            pose_strength=p.pose_strength, pose_start=0.0, pose_end=1.0,
-            video_frame_offset=offset, previous_frame_count=OVERLAP,
+            pose_strength=p.pose_strength, pose_start=p.pose_start, pose_end=p.pose_end,
+            video_frame_offset=offset, previous_frame_count=p.plan.overlap,
             replacement_mode=p.replacement,
             reference_image=ref, clip_vision_output=cv_out, pose_video=drive_frames,
         )
@@ -101,13 +119,13 @@ def build_graph(p: GraphParams) -> dict:
         latent = node(f"sample{i}", "KSampler", model=model, seed=p.seed, steps=p.steps, cfg=p.cfg,
                       sampler_name=p.sampler, scheduler=p.scheduler,
                       positive=[f"scail{i}", 0], negative=[f"scail{i}", 1], latent_image=[f"scail{i}", 2],
-                      denoise=1.0)
+                      denoise=p.denoise)
         frames = node(f"decode{i}", "VAEDecode", samples=latent, vae=vae)
         previous = frames
         if i == 0:
             acc = frames
         else:
-            tail = node(f"tail{i}", "ImageFromBatch", image=frames, batch_index=OVERLAP, length=p.plan.length - OVERLAP)
+            tail = node(f"tail{i}", "ImageFromBatch", image=frames, batch_index=p.plan.overlap, length=p.plan.length - p.plan.overlap)
             acc = node(f"cat{i}", "ImageBatch", image1=acc, image2=tail)
     node("save", "SaveImage", images=acc, filename_prefix=p.output_prefix)
     return g
