@@ -295,3 +295,12 @@ the requested anchor count are rejected rather than silently misaligned.
 One prediction generates one sample. Use separate seeded requests for batches;
 SAM3 tracking, skeleton extraction, custom LoRA downloads, sprite cutting and
 background removal remain outside this GPU inference API.
+
+### Current Sprute-compatible version
+
+Pin `54cec44a0b05a60cde948cfa45ec4c61e0efd447ba85204796d40b8fa2112385`
+for the controls documented above. Hosted prediction
+`f4w7zg92knrny0d0xz0vt47npm` succeeded with prepared 576x768, 81-frame input
+and returned 81 lossless PNGs. Inference took 74.89 seconds; total including
+cold start was 540.42 seconds. See the validation document for settings and
+limits of this test.

@@ -67,4 +67,20 @@ in `/mnt/stash/scail2-controls/bench-{fp16,fp8}-{sdpa,sage}/`, including
 response.json, container.log, result.zip and gpu-memory.json.
 
 The dual-checkpoint upload terminated with HTTP 413 from the registry gateway.
-FP8-only packaging is being uploaded separately; hosted verification is pending.
+FP8-only packaging uploaded successfully and passed the hosted test below.
+
+## FP8 hosted validation
+
+Public model `sprited/scail-2`, version
+`54cec44a0b05a60cde948cfa45ec4c61e0efd447ba85204796d40b8fa2112385`.
+Prediction `f4w7zg92knrny0d0xz0vt47npm` succeeded with `Cancel-After: 10m`.
+Replicate reports 74.89 seconds prediction time and 540.42 seconds total time.
+The test used the same prepared 576x768, 81-frame inputs, seed 42, Sprute preset,
+FP8 scaled checkpoint and BF16 VAE. Returned PNG ZIP contains 81 valid images
+at 576x768; metadata confirms UniPC/simple, 8 steps, CFG 1, shift 5, DPO 1
+and LightX2V 0.8. Extracted output was visually inspected.
+
+Evidence: `/mnt/stash/scail2-controls/hosted-fp8/` on gin and
+`output/hosted-fp8/` locally. Cold-start duration is specific to this run.
+Additional-reference and previous-frame controls have offline container
+coverage above, not separate hosted multi-reference quality validation.
