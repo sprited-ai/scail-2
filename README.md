@@ -234,7 +234,6 @@ input = {
     "video_mask": driving_palette_mkv,
     "prepared_inputs": True,
     "preset": "sprute",             # UniPC, simple, 8 steps, CFG 1, shift 5
-    "model_precision": "fp16",       # original checkpoint, not upcast FP8
     "vae_precision": "bf16",
     "dpo_lora": 1.0,
     "lightx2v_lora": 0.8,             # applied after DPO, matching Sprute
@@ -255,7 +254,7 @@ is also accepted when frame durations are constant (within 1 ms rounding).
 
 | Control | API input |
 |---|---|
-| Checkpoint / VAE | `model_precision`, `vae_precision` |
+| Checkpoint / VAE | Bundled FP8 scaled checkpoint; `vae_precision` |
 | Sampler / schedule | `sampler_name` (`preset`, `euler`, `uni_pc`), `scheduler` |
 | Steps / CFG / shift | `steps`, `guidance_scale`, `shift` (0 inherits preset) |
 | Distillation / DPO / relighting | `lightx2v_lora` (-1 inherits preset; 0 off), `dpo_lora`, `relight_lora` |

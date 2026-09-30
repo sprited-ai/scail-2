@@ -13,7 +13,6 @@ from preprocess import OVERLAP, ChunkPlan
 UNET = "wan2.1_14B_SCAIL_2_fp8_scaled.safetensors"
 TEXT_ENCODER = "umt5_xxl_fp8_e4m3fn_scaled.safetensors"
 VAE = "wan_2.1_vae.safetensors"
-UNET_FP16 = "wan2.1_14B_SCAIL_2_fp16.safetensors"
 VAE_BF16 = "Wan2_1_VAE_bf16.safetensors"
 CLIP_VISION = "clip_vision_h.safetensors"
 LORA_LIGHTX2V = "lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors"

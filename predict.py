@@ -27,7 +27,7 @@ from PIL import Image
 import preprocess as pp
 from comfy_client import ComfyServer
 from matting import BiRefNetMatter
-from workflow import LORA_DPO, LORA_RELIGHT, LORA_LIGHTX2V, UNET, UNET_FP16, VAE, VAE_BF16, PRESETS, GraphParams, build_graph
+from workflow import LORA_DPO, LORA_RELIGHT, LORA_LIGHTX2V, UNET, VAE, VAE_BF16, PRESETS, GraphParams, build_graph
 from runtime_limits import deadline
 
 COMFY_DIR = os.environ.get("COMFY_DIR", "/ComfyUI")
@@ -38,8 +38,6 @@ HF = "https://huggingface.co"
 # path under COMFY_DIR/models -> (build-time download URL, size in bytes).
 # cog.yaml bundles these files; setup() only verifies them.
 WEIGHTS = {
-    "diffusion_models/wan2.1_14B_SCAIL_2_fp16.safetensors":
-        (f"{HF}/Comfy-Org/SCAIL-2/resolve/fe3c728bc793ba21ca674688f822afb709ad44fb/diffusion_models/wan2.1_14B_SCAIL_2_fp16.safetensors", 32794040328),
     "vae/Wan2_1_VAE_bf16.safetensors":
         (f"{HF}/Kijai/WanVideo_comfy/resolve/8260d429d19fd7a72304cad059160b95d843913f/Wan2_1_VAE_bf16.safetensors", 253806278),
     "diffusion_models/wan2.1_14B_SCAIL_2_fp8_scaled.safetensors":
@@ -227,7 +225,6 @@ class Predictor(BasePredictor):
         additional_image_masks: Optional[list[Path]] = Input(default=None, description="Palette mask for each additional reference, in the same order."),
         previous_frames: Optional[Path] = Input(default=None, description="Previous output as an image or lossless video. Its tail anchors the beginning of this request. The driving video must include that overlapping interval, and returned frames include the anchor interval."),
         previous_frame_count: int = Input(default=5, ge=1, le=77, description="Tail frames used for anchoring and chunk overlap; must be 4n+1. Use 1 for a single-image anchor. SCAIL-2 was trained with 5."),
-        model_precision: str = Input(default="fp8", choices=["fp8", "fp16"], description="Select actual bundled checkpoint. Sprute's local workflow uses fp16; casting FP8 to FP16 is not equivalent."),
         vae_precision: str = Input(default="default", choices=["default", "bf16"], description="Select VAE checkpoint; Sprute uses bf16."),
         sampler_name: str = Input(default="preset", choices=["preset", "euler", "uni_pc"], description="Override preset sampler."),
         scheduler: str = Input(default="simple", choices=["simple", "normal", "karras", "exponential", "sgm_uniform", "ddim_uniform", "beta", "linear_quadratic", "kl_optimal"], description="ComfyUI sampling schedule."),
@@ -379,7 +376,7 @@ class Predictor(BasePredictor):
                 prompt=prompt, negative_prompt=negative_prompt, width=W, height=H, plan=plan, seed=seed,
                 steps=steps or pr["steps"], cfg=cfg,
                 shift=shift if shift > 0 else pr["shift"], sampler=pr["sampler"] if sampler_name == "preset" else sampler_name, scheduler=scheduler,
-                unet=UNET_FP16 if model_precision == "fp16" else UNET,
+                unet=UNET,
                 vae=VAE_BF16 if vae_precision == "bf16" else VAE,
                 pose_start=pose_start, pose_end=pose_end, denoise=denoise,
                 additional_refs=extra_names, previous_frames=previous_name,

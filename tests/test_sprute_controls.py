@@ -19,11 +19,11 @@ def test_sprute_graph_uses_local_sampler_model_and_pose_controls(monkeypatch):
     monkeypatch.setitem(required, "vae_name", [[wf.VAE, wf.VAE_BF16]])
     pr = wf.PRESETS['sprute']
     g = wf.build_graph(params(steps=pr['steps'], cfg=pr['cfg'], shift=pr['shift'],
-                             sampler=pr['sampler'], unet=wf.UNET_FP16, vae=wf.VAE_BF16,
+                             sampler=pr['sampler'], unet=wf.UNET, vae=wf.VAE_BF16,
                              pose_start=.2, pose_end=.8, denoise=.75,
                              loras=[(wf.LORA_DPO,1), (wf.LORA_LIGHTX2V,.8)]))
     check_against_schema(g)
-    assert g['unet']['inputs']['unet_name'] == wf.UNET_FP16
+    assert g['unet']['inputs']['unet_name'] == wf.UNET
     assert g['vae']['inputs']['vae_name'] == wf.VAE_BF16
     assert g['sample0']['inputs']['steps'] == 8
     assert g['sample0']['inputs']['sampler_name'] == 'uni_pc'
@@ -103,7 +103,7 @@ def test_predictor_prepared_request_reaches_graph_and_returns_lossless_frames(tm
             INPUT_DIR=str(inp),OUTPUT_DIR=str(out),WORK=str(tmp_path),MAX_PROBE_FRAMES=20000,
             MAX_SAMPLING_SECONDS=720,EFFECTIVE_TFLOPS=350,
             encode_mp4=lambda pattern,n,fps,p:Path(p).write_bytes(b'preview'))
-    ns.update({name:getattr(wf,name) for name in ('PRESETS','LORA_DPO','LORA_RELIGHT','LORA_LIGHTX2V','UNET','UNET_FP16','VAE','VAE_BF16','GraphParams','build_graph')})
+    ns.update({name:getattr(wf,name) for name in ('PRESETS','LORA_DPO','LORA_RELIGHT','LORA_LIGHTX2V','UNET','VAE','VAE_BF16','GraphParams','build_graph')})
     exec(compile(ast.Module(body=helpers+[method],type_ignores=[]),'predict.py','exec'),ns)
     pixels=np.full((64,96,3),128,dtype=np.uint8)
     pixels[16:48,32:64]=(10,20,30)
@@ -128,12 +128,12 @@ def test_predictor_prepared_request_reaches_graph_and_returns_lossless_frames(tm
     extra = dict(additional_images=[ref], additional_image_masks=[rm], previous_frames=ref,
                  previous_frame_count=1) if extended else {}
     result=ns['predict'](owner,image=ref,video=drive,image_mask=rm,video_mask=dm,
-                         prepared_inputs=True,preset='sprute',model_precision='fp16',vae_precision='bf16',
+                         prepared_inputs=True,preset='sprute',vae_precision='bf16',
                          seed=42,return_frames=True,lightx2v_lora=.6,pose_start=.1,pose_end=.9,denoise=.8, **extra)
     meta=json.loads(result.metadata.read_text())
     assert (meta['width'],meta['height'],meta['num_frames'],meta['fps'])==(96,64,5,24)
     assert meta['sampler']=='uni_pc' and meta['steps']==8
-    assert meta['model']==wf.UNET_FP16 and meta['vae']==wf.VAE_BF16
+    assert meta['model']==wf.UNET and meta['vae']==wf.VAE_BF16
     assert meta['loras']==[[wf.LORA_DPO,1.0],[wf.LORA_LIGHTX2V,.6]]
     assert comfy.graph['scail0']['inputs']['pose_start']==.1
     assert comfy.graph['sample0']['inputs']['denoise']==.8

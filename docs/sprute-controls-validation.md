@@ -42,3 +42,29 @@ These short tests verify execution and transport. They do not establish
 full-length animation quality, same-seed equality across hardware, multi-view
 quality improvement, or hosted execution of this new version. The older public
 FP8 version's hosted success is documented in README.
+
+## FP8 deployment selection
+
+The deployment now bundles only the FP8 scaled SCAIL checkpoint, by user choice.
+The FP16 results above describe the earlier comparison image, not the current
+public API. VAE precision remains configurable. SageAttention is not yet enabled
+in the deployment; the experimental gin package lacks an SM90 binary.
+
+Same prepared input, seed 42, 576x768, 81 frames, Sprute preset, BF16 VAE,
+lowvram, sequential runs on gin (RTX PRO 6000 Blackwell):
+
+| Model | Attention | Prediction seconds | Process peak GPU MiB |
+|---|---|---:|---:|
+| FP16 | PyTorch SDPA | 207.42 | 46238 |
+| FP8 scaled | PyTorch SDPA | 144.46 | 33278 |
+| FP16 | SageAttention 2.2.0 | 167.80 | 46238 |
+| FP8 scaled | SageAttention 2.2.0 | 106.93 | 33278 |
+
+One measured run per configuration, not a statistical benchmark or H100 result.
+Memory is sampled once per second for container process IDs with nvidia-smi;
+PyTorch allocator peaks alone omit dynamic weight allocations. Evidence lives
+in `/mnt/stash/scail2-controls/bench-{fp16,fp8}-{sdpa,sage}/`, including
+response.json, container.log, result.zip and gpu-memory.json.
+
+The dual-checkpoint upload terminated with HTTP 413 from the registry gateway.
+FP8-only packaging is being uploaded separately; hosted verification is pending.
