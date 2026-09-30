@@ -312,3 +312,9 @@ This deployment uses FP8-scaled quantized diffusion weights to reduce GPU memory
 ## Output encoding
 
 `output_format` selects `mp4` (H.264, default), `webm` (VP9), or looping animated `webp`. `output_quality` ranges from 1 to 100 (default 80); it controls compression, not inference. Values are codec-relative and 100 does not guarantee lossless RGB. Use `return_frames` for original PNGs. Outputs remain opaque; choosing WebP does not remove the background. Format and quality are recorded in metadata.
+
+## Hosted file upload compatibility
+
+The SDK is pinned to Cog 0.16.8 because Cog 0.23 serializes files nested in named output objects as inline data URIs, which cannot be retained as playable Replicate examples. The named output API is unchanged. Before pushing with a modern Cog CLI, run `python tools/generate_schema.py` in the pinned SDK environment, then add `--openapi-schema openapi-upload.json` to the push command. Schema generation imports the predictor but does not run model setup.
+
+CPU regression check, using a built image: mount `tests/output_upload` at `/check`, set the working directory to `/check`, and run `python harness.py`. It verifies two real HTTP uploads and named file URLs without loading model weights.

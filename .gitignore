@@ -7,3 +7,5 @@ samples/out/
 tmp/
 .env
 output/
+
+/openapi-upload.json

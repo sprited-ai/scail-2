@@ -5,6 +5,8 @@
 # model. All weights are bundled at build time; setup only verifies and loads them.
 # See README.md / NOTICE.
 build:
+  # Preserve named file outputs through Replicate uploads (Cog 0.23 inlines them).
+  sdk_version: "0.16.8"
   gpu: true
   cuda: "12.8"
   python_version: "3.12"
@@ -35,11 +37,11 @@ build:
     # BiRefNet (MIT) for automatic single-subject masks — 0.9 GB into the HF cache
     - python3 -c "from huggingface_hub import snapshot_download; snapshot_download('ZhengPeng7/BiRefNet')"
     # cog runtime into the same interpreter, `python` alias for cog's CMD, and a loud check
-    - uv pip install --python /usr/bin/python3 --break-system-packages cog==0.22.0 coglet==0.22.0
-    - ln -sf "$(readlink -f /usr/bin/python3)" /usr/bin/python && python -c "import cog, coglet, torch, av, websocket, transformers, timm, huggingface_hub; print('runtime ok', torch.__version__)"
+    - uv pip install --python /usr/bin/python3 --break-system-packages cog==0.16.8
+    - ln -sf "$(readlink -f /usr/bin/python3)" /usr/bin/python && python -c "import cog, torch, av, websocket, transformers, timm, huggingface_hub; print('runtime ok', torch.__version__)"
     # Replicate installs runtime dependencies before setup(). This interpreter is
     # owned by this disposable image; uv's PEP 668 marker blocks that bootstrap.
     - python -c "import pathlib, sysconfig; (pathlib.Path(sysconfig.get_path('stdlib')) / 'EXTERNALLY-MANAGED').unlink(missing_ok=True)"
     # Match the Cog builder/runtime used by the hosted setup-verified image.
-    - python -m pip install cog==0.23.0 coglet==0.23.0
-run: "predict.py:Predictor"
+    - python -m pip install cog==0.16.8
+predict: "predict.py:Predictor"

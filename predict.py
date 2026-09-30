@@ -6,7 +6,6 @@ here (sizing, fps resampling, SCAIL mask colouring, optional BiRefNet
 auto-masks), the graph is built by workflow.py, and ComfyUI does the sampling.
 See README.md for the input semantics.
 """
-from __future__ import annotations
 
 import glob
 import json
