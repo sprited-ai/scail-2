@@ -36,7 +36,7 @@ What this endpoint gives you:
   frames per call, generated in overlapping windows exactly like the official
   ComfyUI "extend" workflow.
 - **Same numbers as ComfyUI** — this runs ComfyUI's own `WanSCAILToVideo`
-  node (v0.33.1, pinned), with the Comfy-Org FP8 or FP16 checkpoint.
+  node (v0.33.1, pinned), with the Comfy-Org FP8 scaled checkpoint.
   Matching settings preserves the workflow contract; bit-identical results
   across GPU types and ComfyUI versions are not guaranteed.
 
@@ -173,10 +173,10 @@ the API header.
 
 ## Bundled weights
 
-`cog build` downloads all nine inference weight files into the image, alongside the
+`cog build` downloads all eight inference weight files into the image, alongside the
 BiRefNet cache. Startup validates their sizes and fails clearly if any file is
-missing or truncated; it does not download replacement weights. The FP16 and BF16 VAE additions add 33.05 GB to the previous image sizes
-reported below. Replicate still needs to pull the image on a
+missing or truncated; it does not download replacement weights. The optional BF16 VAE adds 253.8 MB to the previous image sizes
+reported below. The FP16 SCAIL checkpoint is not bundled. Replicate still needs to pull the image on a
 cold boot, but model setup no longer depends on Hugging Face downloads.
 
 Replicate updates runtime dependencies before calling `setup()`. The image
@@ -270,8 +270,8 @@ preview. `output.metadata` records the effective FPS, dimensions, frame count,
 seed, checkpoint and sampling settings. `return_masks` now returns the driving
 mask as lossless FFV1 MKV to preserve palette colors.
 
-The additional FP16 model and BF16 VAE are bundled during build (33.05 GB extra);
-these choices require rebuilding the image. The previously deployed `b7d7a4fb`
+The BF16 VAE is bundled during build alongside the default VAE.
+The diffusion checkpoint is fixed to FP8 scaled. The previously deployed `b7d7a4fb`
 version does **not** expose these new controls. Automatic continuation defaults
 to five-frame overlap (`previous_frame_count`).
 This API is not an arbitrary Comfy graph executor or a custom-LoRA loader.
