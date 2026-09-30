@@ -23,7 +23,7 @@ LORA_RELIGHT = "wan2.1_SCAIL_2_relight_lora_bf16.safetensors"
 # steps, cfg 5, shift 3). "fast" = the official ComfyUI template: lightx2v
 # step/cfg-distill LoRA at 0.8, euler, 6 steps, cfg 1, shift 5.
 PRESETS = {
-    "sprute": dict(steps=8, cfg=1.0, shift=5.0, sampler="uni_pc", scheduler="simple", loras=[(LORA_LIGHTX2V, 0.8)]),
+    "balanced": dict(steps=8, cfg=1.0, shift=5.0, sampler="uni_pc", scheduler="simple", loras=[(LORA_LIGHTX2V, 0.8)]),
     "quality": dict(steps=40, cfg=5.0, shift=3.0, sampler="uni_pc", scheduler="simple", loras=[]),
     "fast": dict(steps=6, cfg=1.0, shift=5.0, sampler="euler", scheduler="simple", loras=[(LORA_LIGHTX2V, 0.8)]),
 }

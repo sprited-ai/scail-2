@@ -17,7 +17,7 @@ def test_sprute_graph_uses_local_sampler_model_and_pose_controls(monkeypatch):
     # Loader dropdowns are generated from the installed files, not a fixed API enum.
     required = OI["VAELoader"]["input"]["required"]
     monkeypatch.setitem(required, "vae_name", [[wf.VAE, wf.VAE_BF16]])
-    pr = wf.PRESETS['sprute']
+    pr = wf.PRESETS['balanced']
     g = wf.build_graph(params(steps=pr['steps'], cfg=pr['cfg'], shift=pr['shift'],
                              sampler=pr['sampler'], unet=wf.UNET, vae=wf.VAE_BF16,
                              pose_start=.2, pose_end=.8, denoise=.75,
@@ -128,7 +128,7 @@ def test_predictor_prepared_request_reaches_graph_and_returns_lossless_frames(tm
     extra = dict(additional_images=[ref], additional_image_masks=[rm], previous_frames=ref,
                  previous_frame_count=1) if extended else {}
     result=ns['predict'](owner,image=ref,video=drive,image_mask=rm,video_mask=dm,
-                         prepared_inputs=True,preset='sprute',vae_precision='bf16',
+                         prepared_inputs=True,preset='balanced',vae_precision='bf16',
                          seed=42,return_frames=True,lightx2v_lora=.6,pose_start=.1,pose_end=.9,denoise=.8, **extra)
     meta=json.loads(result.metadata.read_text())
     assert (meta['width'],meta['height'],meta['num_frames'],meta['fps'])==(96,64,5,24)
@@ -165,3 +165,44 @@ def test_continuation_overlap_is_consistent(overlap):
     for invalid in [0, 2, 81]:
         with pytest.raises(ValueError):
             pp.plan_chunks(161, overlap=invalid)
+
+@pytest.mark.parametrize('auto_mask,explicit,transparent', [(True,False,True),(False,False,True),(True,True,True),(True,False,False),(False,False,False)])
+def test_driving_webp_alpha_mask_priority(tmp_path, auto_mask, explicit, transparent):
+    """Execute the actual decode/mask branch without loading GPU dependencies."""
+    import time
+    from types import SimpleNamespace
+    path=tmp_path/'driver.webp'
+    source=[]
+    for i in range(5):
+        im=Image.new('RGBA',(96,64),(255,0,0,0 if transparent else 255))
+        im.paste((10,100+i,200,255),(24,16,72,48));source.append(im)
+    source[0].save(path,save_all=True,append_images=source[1:],duration=40,lossless=True)
+    supplied=tmp_path/'mask.webp'
+    masks=[Image.new('RGB',(96,64),(i, i, i)) for i in range(5)]
+    masks[0].save(supplied,save_all=True,append_images=masks[1:],duration=40,lossless=True)
+    class Matter:
+        calls=0
+        def masks(self, frames):
+            self.calls+=1
+            return [np.zeros((64,64),dtype=bool) for _ in frames]
+    matter=Matter()
+    ns=video_helpers()
+    ns.update(pp=pp,np=np,time=time,video=path,sel=[0,2,2,4],W=64,H=64,n=4,n_src=5,src_fps=25,
+              prepared_inputs=False,video_mask=supplied if explicit else None,auto_mask=auto_mask,
+              drive_bg='black',self=SimpleNamespace(matter=matter))
+    tree=ast.parse(Path('predict.py').read_text())
+    body=next(node.body for node in ast.walk(tree) if isinstance(node,ast.With) and any(isinstance(x,ast.Assign) and isinstance(x.targets[0],ast.Name) and x.targets[0].id=='decoded' for x in node.body))
+    start=next(i for i,x in enumerate(body) if isinstance(x,ast.Assign) and isinstance(x.targets[0],ast.Name) and x.targets[0].id=='decoded')
+    end=next(i for i,x in enumerate(body) if isinstance(x,ast.Assign) and isinstance(x.targets[0],ast.Tuple) and isinstance(x.targets[0].elts[0],ast.Name) and x.targets[0].elts[0].id=='ref_rgb')
+    exec(compile(ast.Module(body=body[start:end],type_ignores=[]),'predict.py','exec'),ns)
+    assert len(ns['frames'])==4
+    assert matter.calls==int(auto_mask and not explicit and not transparent)
+    if explicit:
+        assert not np.any(ns['drive_mask'])
+    elif transparent:
+        for mask in ns['drive_mask']:
+            assert tuple(mask[32,32])==(0,0,255)
+            assert tuple(mask[0,0])==(0,0,0)
+        assert np.array_equal(ns['drive_mask'][1],ns['drive_mask'][2])
+    elif not auto_mask:
+        assert ns['drive_mask'] is None
