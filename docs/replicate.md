@@ -10,7 +10,7 @@ This is an unofficial community deployment of [SCAIL-2 by Zhipu AI](https://gith
 2. Choose **animation** to animate the reference character in its own scene, or **replacement** to preserve the driving scene.
 3. Start with **fast**. Set a seed to repeat a configuration.
 
-The result includes an MP4 preview and settings JSON. Enable **return_frames** for a ZIP of lossless PNG frames, or **return_masks** to inspect and reuse the masks.
+The result includes an MP4, WebM, or animated WebP and settings JSON. Enable **return_frames** for a ZIP of lossless PNG frames, or **return_masks** to inspect and reuse the masks.
 
 ## Presets
 
@@ -41,3 +41,7 @@ Cold starts include loading the model image and can take several minutes. API ca
 ## Source
 
 [Deployment source and technical details](https://github.com/sprited-ai/scail-2-on-replicate). See the upstream project and deployment repository for component licenses and model attribution.
+
+## Output format and quality
+
+Choose `output_format`: `mp4` (default), `webm`, or animated `webp`. `output_quality` sets compression quality from 1 to 100 (default 80). Higher values generally produce larger files; values are not comparable across codecs and do not measure inference quality. For a video without additional frame archives, set `return_frames` to false. WebP output does not automatically remove the background.
