@@ -18,7 +18,7 @@ The result includes an MP4 preview and settings JSON. Enable **return_frames** f
 - **balanced**: UniPC, 8 steps, CFG 1, shift 5, with the same LoRA strengths.
 - **quality**: UniPC, 40 steps, CFG 5, shift 3, without the distillation LoRA. This takes substantially longer and is not guaranteed to improve every input.
 
-The diffusion model uses FP8 scaled weights. The VAE defaults to BF16. Sampling controls can be overridden individually.
+This deployment uses **FP8-scaled quantized diffusion model weights** to reduce GPU memory usage. Outputs may differ from the original full-precision weights. The **VAE uses BF16 by default**, matching the ComfyUI template. Sampling controls can be overridden individually.
 
 ## Masks and transparency
 

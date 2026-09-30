@@ -29,6 +29,7 @@ from comfy_client import ComfyServer
 from matting import BiRefNetMatter
 from workflow import LORA_DPO, LORA_RELIGHT, LORA_LIGHTX2V, UNET, VAE, VAE_BF16, PRESETS, GraphParams, build_graph
 from runtime_limits import deadline
+from output_media import encode_animation
 
 COMFY_DIR = os.environ.get("COMFY_DIR", "/ComfyUI")
 WORK = os.environ.get("SCAIL2_WORK", "/tmp/scail2")
@@ -162,15 +163,6 @@ def write_video(path: str, frames: list[np.ndarray], fps: float, lossless: bool 
             c.mux(pkt)
 
 
-def encode_mp4(frame_glob_pattern: str, n_frames: int, fps: float, out: str, crf: int = 15) -> None:
-    subprocess.check_call([
-        "ffmpeg", "-nostdin", "-y", "-loglevel", "error", "-framerate", f"{fps:.6f}", "-start_number", "1",
-        "-i", frame_glob_pattern, "-frames:v", str(n_frames),
-        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", str(crf), "-preset", "medium",
-        "-movflags", "+faststart", out,
-    ], stdin=subprocess.DEVNULL)
-
-
 # ----------------------------------------------------------------------------
 
 class Output(BaseModel):
@@ -232,7 +224,9 @@ class Predictor(BasePredictor):
         pose_start: float = Input(default=0, ge=0, le=1, description="Start fraction of pose conditioning."),
         pose_end: float = Input(default=1, ge=0, le=1, description="End fraction of pose conditioning."),
         denoise: float = Input(default=1, ge=0.001, le=1, description="KSampler denoise strength."),
-        return_frames: bool = Input(default=False, description="Return original decoded PNG frames as ZIP for lossless local Toonout and sprite assembly. MP4 is only a preview."),
+        output_format: str = Input(default="mp4", choices=["mp4", "webm", "webp"], description="Output file format: MP4 (H.264), WebM (VP9), or looping animated WebP. Does not change inference."),
+        output_quality: int = Input(default=80, ge=1, le=100, description="Compression quality: higher means better fidelity and usually larger files. Codec-relative, not a model quality score; 100 does not guarantee lossless output. Use PNG frames for lossless originals."),
+        return_frames: bool = Input(default=False, description="Return original decoded PNG frames as ZIP for lossless local Toonout and sprite assembly. Encoded video/WebP is compressed."),
         steps: int = Input(default=0, ge=0, le=100, description="Sampling steps; 0 = preset default."),
         guidance_scale: float = Input(default=0, ge=0, le=20, description="Classifier-free guidance; 0 = preset default (5 quality / 1 fast)."),
         shift: float = Input(default=0, ge=0, le=20, description="Flow-matching schedule shift; 0 = preset default (3 quality / 5 fast)."),
@@ -407,8 +401,8 @@ class Predictor(BasePredictor):
                 produced = sorted(glob.glob(os.path.join(out_dir, "f_*_.png")))
                 if len(produced) < n:
                     raise RuntimeError(f"expected {n} frames, ComfyUI produced {len(produced)}")
-                out_path = os.path.join(WORK, f"{job}.mp4")
-                encode_mp4(os.path.join(out_dir, "f_%05d_.png"), n, out_fps, out_path)
+                out_path = os.path.join(WORK, f"{job}.{output_format}")
+                encode_animation(os.path.join(out_dir, "f_%05d_.png"), n, out_fps, out_path, output_format, output_quality)
                 result = Output(video=Path(out_path), seed=seed)
                 if return_frames:
                     archive = os.path.join(WORK, f"{job}-frames.zip")
@@ -423,7 +417,8 @@ class Predictor(BasePredictor):
                                    pose_start=pose_start, pose_end=pose_end, denoise=denoise,
                                    reference_count=1 + len(extra_names), previous_frame_count=previous_frame_count,
                                    previous_frames_supplied=previous_frames is not None,
-                                   prepared_inputs=prepared_inputs), handle, indent=2)
+                                   prepared_inputs=prepared_inputs, output_format=output_format,
+                                   output_quality=output_quality), handle, indent=2)
                 result.metadata = Path(metadata_path)
                 if return_masks:
                     if ref_mask is not None:

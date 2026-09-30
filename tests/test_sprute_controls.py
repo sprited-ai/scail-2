@@ -102,7 +102,7 @@ def test_predictor_prepared_request_reaches_graph_and_returns_lossless_frames(tm
             os=os,time=time,random=random,uuid=uuid,glob=glob,shutil=shutil,json=json,Fraction=Fraction,
             INPUT_DIR=str(inp),OUTPUT_DIR=str(out),WORK=str(tmp_path),MAX_PROBE_FRAMES=20000,
             MAX_SAMPLING_SECONDS=720,EFFECTIVE_TFLOPS=350,
-            encode_mp4=lambda pattern,n,fps,p:Path(p).write_bytes(b'preview'))
+            encode_animation=lambda pattern,n,fps,p,*args:Path(p).write_bytes(b'preview'))
     ns.update({name:getattr(wf,name) for name in ('PRESETS','LORA_DPO','LORA_RELIGHT','LORA_LIGHTX2V','UNET','VAE','VAE_BF16','GraphParams','build_graph')})
     exec(compile(ast.Module(body=helpers+[method],type_ignores=[]),'predict.py','exec'),ns)
     pixels=np.full((64,96,3),128,dtype=np.uint8)

@@ -304,3 +304,11 @@ for the controls documented above. Hosted prediction
 and returned 81 lossless PNGs. Inference took 74.89 seconds; total including
 cold start was 540.42 seconds. See the validation document for settings and
 limits of this test.
+
+## Quantization
+
+This deployment uses FP8-scaled quantized diffusion weights to reduce GPU memory usage. Outputs may differ from the original full-precision weights. The VAE defaults to BF16 to match the ComfyUI template.
+
+## Output encoding
+
+`output_format` selects `mp4` (H.264, default), `webm` (VP9), or looping animated `webp`. `output_quality` ranges from 1 to 100 (default 80); it controls compression, not inference. Values are codec-relative and 100 does not guarantee lossless RGB. Use `return_frames` for original PNGs. Outputs remain opaque; choosing WebP does not remove the background. Format and quality are recorded in metadata.
