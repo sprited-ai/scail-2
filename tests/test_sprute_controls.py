@@ -17,7 +17,7 @@ def test_sprute_graph_uses_local_sampler_model_and_pose_controls(monkeypatch):
     # Loader dropdowns are generated from the installed files, not a fixed API enum.
     required = OI["VAELoader"]["input"]["required"]
     monkeypatch.setitem(required, "vae_name", [[wf.VAE, wf.VAE_BF16]])
-    pr = wf.PRESETS['sprute']
+    pr = wf.PRESETS['balanced']
     g = wf.build_graph(params(steps=pr['steps'], cfg=pr['cfg'], shift=pr['shift'],
                              sampler=pr['sampler'], unet=wf.UNET, vae=wf.VAE_BF16,
                              pose_start=.2, pose_end=.8, denoise=.75,
@@ -128,7 +128,7 @@ def test_predictor_prepared_request_reaches_graph_and_returns_lossless_frames(tm
     extra = dict(additional_images=[ref], additional_image_masks=[rm], previous_frames=ref,
                  previous_frame_count=1) if extended else {}
     result=ns['predict'](owner,image=ref,video=drive,image_mask=rm,video_mask=dm,
-                         prepared_inputs=True,preset='sprute',vae_precision='bf16',
+                         prepared_inputs=True,preset='balanced',vae_precision='bf16',
                          seed=42,return_frames=True,lightx2v_lora=.6,pose_start=.1,pose_end=.9,denoise=.8, **extra)
     meta=json.loads(result.metadata.read_text())
     assert (meta['width'],meta['height'],meta['num_frames'],meta['fps'])==(96,64,5,24)

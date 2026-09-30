@@ -233,7 +233,7 @@ input = {
     "image_mask": reference_palette_png,
     "video_mask": driving_palette_mkv,
     "prepared_inputs": True,
-    "preset": "sprute",             # UniPC, simple, 8 steps, CFG 1, shift 5
+    "preset": "balanced",             # UniPC, simple, 8 steps, CFG 1, shift 5
     "vae_precision": "bf16",
     "dpo_lora": 1.0,
     "lightx2v_lora": 0.8,             # applied after DPO, matching Sprute

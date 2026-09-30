@@ -218,17 +218,17 @@ class Predictor(BasePredictor):
         height: int = Input(default=0, ge=0, le=1536, description="Explicit output height (multiple of 32)."),
         num_frames: int = Input(default=0, ge=0, le=pp.MAX_FRAMES, description=f"Maximum output frames, taken from the start of the driving video after applying fps. 0 uses the available video, up to {pp.MAX_FRAMES} frames. 81 frames at 24 fps is about 3.4 seconds. Does not extend a shorter video. Counts are trimmed to a supported length (5, 9, 13, ...)."),
         fps: int = Input(default=0, ge=0, le=60, description="Resample the driving video to this frame rate before animating (frames are held, never interpolated); the output uses the same rate. 0 = keep the driving video's rate."),
-        preset: str = Input(default="fast", choices=["fast", "quality", "sprute"],
-                            description="fast (default): the official ComfyUI recipe — lightx2v step/CFG-distill LoRA, Euler, 6 steps, CFG 1, shift 5; sprute: UniPC, 8 steps, CFG 1, shift 5, DPO before LightX2V. Model/VAE precision are selected separately. quality: the paper's sampler (UniPC, 40 steps, CFG 5, shift 3) — 81 frames at 512p takes ~10 min on an H100."),
-        prepared_inputs: bool = Input(default=False, description="Already-composited RGB grids and exact RGB SCAIL palette masks from local Sprute. No resize, crop, recoloring or automatic masks. Inputs must have matching dimensions; video masks must match frame count and FPS. Use lossless WebP or FFV1 MKV."),
+        preset: str = Input(default="fast", choices=["fast", "quality", "balanced"],
+                            description="fast (default): the official ComfyUI recipe — lightx2v step/CFG-distill LoRA, Euler, 6 steps, CFG 1, shift 5; balanced: UniPC, 8 steps, CFG 1, shift 5, DPO before LightX2V. The model uses FP8 scaled weights and defaults to BF16 VAE. quality: the paper's sampler (UniPC, 40 steps, CFG 5, shift 3) — 81 frames at 512p takes ~10 min on an H100."),
+        prepared_inputs: bool = Input(default=False, description="Already-composited RGB grids and exact RGB SCAIL palette masks. No resize, crop, recoloring or automatic masks. Inputs must have matching dimensions; video masks must match frame count and FPS. Use lossless WebP or FFV1 MKV."),
         additional_images: Optional[list[Path]] = Input(default=None, description="Up to 7 additional reference views. Supply a matching additional_image_masks list and image_mask; palette colors bind views to the same identities. CLIP vision uses the primary image."),
         additional_image_masks: Optional[list[Path]] = Input(default=None, description="Palette mask for each additional reference, in the same order."),
         previous_frames: Optional[Path] = Input(default=None, description="Previous output as an image or lossless video. Its tail anchors the beginning of this request. The driving video must include that overlapping interval, and returned frames include the anchor interval."),
         previous_frame_count: int = Input(default=5, ge=1, le=77, description="Tail frames used for anchoring and chunk overlap; must be 4n+1. Use 1 for a single-image anchor. SCAIL-2 was trained with 5."),
-        vae_precision: str = Input(default="default", choices=["default", "bf16"], description="Select VAE checkpoint; Sprute uses bf16."),
+        vae_precision: str = Input(default="bf16", choices=["default", "bf16"], description="VAE precision. BF16 matches the ComfyUI template."),
         sampler_name: str = Input(default="preset", choices=["preset", "euler", "uni_pc"], description="Override preset sampler."),
         scheduler: str = Input(default="simple", choices=["simple", "normal", "karras", "exponential", "sgm_uniform", "ddim_uniform", "beta", "linear_quadratic", "kl_optimal"], description="ComfyUI sampling schedule."),
-        lightx2v_lora: float = Input(default=-1, ge=-1, le=2, description="LightX2V strength: -1 uses preset, 0 disables. Sprute uses 0.8."),
+        lightx2v_lora: float = Input(default=-1, ge=-1, le=2, description="LightX2V strength: -1 uses preset, 0 disables. The fast and balanced presets use 0.8."),
         pose_start: float = Input(default=0, ge=0, le=1, description="Start fraction of pose conditioning."),
         pose_end: float = Input(default=1, ge=0, le=1, description="End fraction of pose conditioning."),
         denoise: float = Input(default=1, ge=0.001, le=1, description="KSampler denoise strength."),
@@ -372,11 +372,9 @@ class Predictor(BasePredictor):
             cfg = guidance_scale if guidance_scale > 0 else pr["cfg"]
             strength = (pr["loras"][0][1] if pr["loras"] else 0) if lightx2v_lora < 0 else lightx2v_lora
             loras = []
-            if preset != "sprute" and strength > 0:
-                loras.append((LORA_LIGHTX2V, strength))
             if dpo_lora > 0:
                 loras.append((LORA_DPO, dpo_lora))
-            if preset == "sprute" and strength > 0:
+            if strength > 0:
                 loras.append((LORA_LIGHTX2V, strength))
             if relight_lora > 0:
                 loras.append((LORA_RELIGHT, relight_lora))
